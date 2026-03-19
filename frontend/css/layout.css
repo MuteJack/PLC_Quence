@@ -142,6 +142,27 @@ html, body {
 .col-comment  { width: 80px; }
 .col-linenum  { width: 20px; }
 
+/* Comment 편집 */
+.comment-input {
+    width: 100%;
+    height: 100%;
+    border: none;
+    outline: 1px solid #0066ff;
+    padding: 2px 4px;
+    font-size: 11px;
+    box-sizing: border-box;
+}
+
+/* Comment 셀 */
+.rung-row td:first-child {
+    font-size: 11px;
+    word-break: break-all;
+    cursor: text;
+    color: green;
+    text-align: left;
+    padding: 2px 4px;
+}
+
 /* COM 열 */
 .col-com { width: 40px; }
 
@@ -225,6 +246,13 @@ html, body {
 
 .step-comment {
     height: 35px;
+    font-size: 10px;
+    padding: 2px 4px;
+    overflow: hidden;
+    word-break: break-all;
+    cursor: default;
+    color: green;
+    text-align: left;
 }
 
 /* Rung 선택 */

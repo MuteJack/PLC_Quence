@@ -15,6 +15,31 @@ const Ladder = {
     init() {
         document.querySelector('.btn-add-rung').addEventListener('click', () => this.addRung());
 
+        // 더블클릭 → Comment 편집
+        document.querySelector('#ladder-table tbody').addEventListener('dblclick', (e) => {
+            // Rung Comment 열
+            const td = e.target.closest('td');
+            if (td) {
+                const tr = td.closest('.rung-row');
+                if (tr && !tr.classList.contains('rung-add')) {
+                    const cells = Array.from(tr.children);
+                    if (cells.indexOf(td) === 0) {
+                        this.editComment(td);
+                        return;
+                    }
+                }
+            }
+
+            // Step Comment (컴포넌트가 있는 셀만)
+            const stepComment = e.target.closest('.step-comment');
+            if (stepComment) {
+                const symbol = stepComment.closest('.step-cell').querySelector('.step-symbol');
+                if (symbol && symbol.dataset.component && symbol.dataset.component !== 'Line') {
+                    this.editComment(stepComment);
+                }
+            }
+        });
+
         document.querySelectorAll('.comp-item').forEach(item => {
             item.addEventListener('click', () => this.selectComponent(item));
         });
@@ -73,14 +98,23 @@ const Ladder = {
                     return;
                 }
 
-                // 왼쪽/오른쪽 클릭 → center와 동일 (자동 배치)
+                // 왼쪽/오른쪽 클릭
                 const symbolLeft = e.target.closest('.step-symbol-left');
                 const symbolRight = e.target.closest('.step-symbol-right');
                 if (symbolLeft || symbolRight) {
                     const zone = symbolLeft || symbolRight;
-                    const symbolCenter = zone.closest('.step-symbol').querySelector('.step-symbol-center');
-                    if (symbolCenter) {
-                        this.placeComponent(symbolCenter);
+                    const td = zone.closest('td');
+                    const symbol = td.querySelector('.step-symbol');
+                    const hasComponent = symbol && symbol.dataset.component && symbol.dataset.component !== 'Line';
+
+                    if (hasComponent) {
+                        // 컴포넌트가 있는 셀 → shift insert
+                        const direction = symbolLeft ? 'left' : 'right';
+                        this.insertComponent(zone, direction);
+                    } else {
+                        // 빈 셀 → center처럼 자동 배치
+                        const center = zone.closest('.step-symbol').querySelector('.step-symbol-center');
+                        if (center) this.placeComponent(center);
                     }
                     return;
                 }
@@ -90,7 +124,7 @@ const Ladder = {
             const symbolCenter = e.target.closest('.step-symbol-center');
             if (symbolCenter) {
                 const symbolDiv = symbolCenter.closest('.step-symbol');
-                if (symbolDiv.dataset.component) {
+                if (symbolDiv.dataset.component && symbolDiv.dataset.component !== 'Output_Basic') {
                     this.selectStep(symbolDiv);
                     return;
                 }
@@ -119,6 +153,10 @@ const Ladder = {
                 this.selectRung(tr);
             }
         });
+
+        // 초기 rung에 기본 output 설정
+        const initialRows = document.querySelectorAll('#ladder-table tbody .rung-row:not(.rung-add):not(.rung-branch)');
+        initialRows.forEach(row => this.setDefaultOutput(row));
 
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Delete') {
@@ -274,14 +312,24 @@ const Ladder = {
         const td = symbolDiv.closest('td');
         const tr = td.closest('tr');
         const isBranch = tr.classList.contains('rung-branch');
+        const cells = Array.from(tr.children);
+        const stepTds = cells.slice(2, 2 + this.stepCount);
+        const deletedIdx = stepTds.indexOf(td);
+
+        // outputCol의 output 삭제 → Output_Basic으로 복원 (comment 유지)
+        if (!isBranch && deletedIdx === this.outputCol) {
+            const back = symbolDiv.querySelector('.step-symbol-back');
+            back.innerHTML = '<img src="images/Components/Output_Basic_Normal.svg">';
+            symbolDiv.dataset.component = 'Output_Basic';
+            this.selectedStep = null;
+            symbolDiv.classList.remove('step-selected');
+            return;
+        }
 
         // 삭제 전에 vertical line 위치 저장
         const vLineData = this.getVerticalLineIndices(tr);
 
         // 삭제 위치에서 오른쪽 경계(vertical line) 찾기
-        const cells = Array.from(tr.children);
-        const stepTds = cells.slice(2, 2 + this.stepCount);
-        const deletedIdx = stepTds.indexOf(td);
         const vlineSelector = isBranch ? '.vertical-line.v-up' : '.vertical-line';
 
         // 삭제 위치에서 같은 구간의 끝 찾기
@@ -309,8 +357,10 @@ const Ladder = {
             const lastIdx = shiftable[shiftable.length - 1];
             const lastSymbol = stepTds[lastIdx].querySelector('.step-symbol');
             const lastBack = stepTds[lastIdx].querySelector('.step-symbol-back');
+            const lastComment = stepTds[lastIdx].querySelector('.step-comment');
             lastBack.innerHTML = '';
             delete lastSymbol.dataset.component;
+            if (lastComment) lastComment.textContent = '';
         }
 
         // vertical line 재배치
@@ -613,12 +663,18 @@ const Ladder = {
         const dstSymbol = dstTd.querySelector('.step-symbol');
         const srcBack = srcTd.querySelector('.step-symbol-back');
         const dstBack = dstTd.querySelector('.step-symbol-back');
+        const srcComment = srcTd.querySelector('.step-comment');
+        const dstComment = dstTd.querySelector('.step-comment');
 
         dstBack.innerHTML = srcBack.innerHTML;
         if (srcSymbol.dataset.component) {
             dstSymbol.dataset.component = srcSymbol.dataset.component;
         } else {
             delete dstSymbol.dataset.component;
+        }
+
+        if (srcComment && dstComment) {
+            dstComment.textContent = srcComment.textContent;
         }
     },
 
@@ -708,6 +764,36 @@ const Ladder = {
         return tr;
     },
 
+    // === Comment 편집 ===
+
+    editComment(td) {
+        if (td.querySelector('input')) return;
+
+        const currentText = td.textContent.trim();
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = currentText;
+        input.className = 'comment-input';
+
+        td.textContent = '';
+        td.appendChild(input);
+        input.focus();
+
+        const finish = () => {
+            const value = input.value.trim();
+            td.textContent = value;
+        };
+
+        input.addEventListener('blur', finish);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') input.blur();
+            if (e.key === 'Escape') {
+                input.value = currentText;
+                input.blur();
+            }
+        });
+    },
+
     // === Rung 선택/삭제/추가 ===
 
     selectRung(tr) {
@@ -781,7 +867,10 @@ const Ladder = {
         return cells.every(td => {
             const symbol = td.querySelector('.step-symbol');
             const hasVertical = td.querySelector('.vertical-line');
-            return !hasVertical && (!symbol || !symbol.dataset.component);
+            if (hasVertical) return false;
+            if (!symbol || !symbol.dataset.component) return true;
+            if (symbol.dataset.component === 'Output_Basic') return true;
+            return false;
         });
     },
 
@@ -805,7 +894,21 @@ const Ladder = {
         tr.innerHTML = cells;
 
         tbody.insertBefore(tr, addRow);
+        this.setDefaultOutput(tr);
         this.rungCount++;
+    },
+
+    // 메인 행의 outputCol에 Output_Basic 기본값 설정
+    setDefaultOutput(tr) {
+        const cells = Array.from(tr.children);
+        const outputTd = cells[2 + this.outputCol];
+        if (!outputTd) return;
+        const symbol = outputTd.querySelector('.step-symbol');
+        const back = outputTd.querySelector('.step-symbol-back');
+        if (symbol && back && !symbol.dataset.component) {
+            back.innerHTML = '<img src="images/Components/Output_Basic_Normal.svg">';
+            symbol.dataset.component = 'Output_Basic';
+        }
     }
 };
 
