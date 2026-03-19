@@ -134,6 +134,24 @@ html, body {
 /* COM 열 */
 .col-com { width: 40px; }
 
+/* Add Rung 행: 회색 구분선 */
+.rung-add td {
+    border-color: #ccc;
+}
+
+.btn-add-rung {
+    padding: 4px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    border: 1px solid #ccc;
+    background: #fff;
+    color: #666;
+}
+
+.btn-add-rung:hover {
+    background: #eee;
+}
+
 /* Components 패널 */
 .comp-group {
     margin-bottom: 12px;
