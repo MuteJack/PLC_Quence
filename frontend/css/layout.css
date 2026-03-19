@@ -1,0 +1,150 @@
+/* Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    height: 100%;
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 14px;
+    background: #fff;
+    color: #000;
+    overflow: hidden;
+}
+
+/* 상단 옵션바 */
+#toolbar {
+    height: 40px;
+    background: #fff;
+    border-bottom: 1px solid #000;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+}
+
+.toolbar-title {
+    font-weight: 600;
+    font-size: 15px;
+}
+
+/* 메인 3열 레이아웃 */
+#main {
+    display: flex;
+    height: calc(100% - 40px);
+}
+
+/* 왼쪽 패널: Components */
+#panel-components {
+    width: 200px;
+    min-width: 150px;
+    border-right: 1px solid #000;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 가운데: 래더 에디터 */
+#workspace {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* 오른쪽 패널: Variable Monitor */
+#panel-monitor {
+    width: 250px;
+    min-width: 180px;
+    border-left: 1px solid #000;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 패널 공통 */
+.panel-header {
+    height: 32px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 600;
+    border-bottom: 1px solid #000;
+    flex-shrink: 0;
+}
+
+.panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+/* 래더 테이블 */
+#ladder-scroll {
+    flex: 1;
+    overflow-y: auto;
+}
+
+#ladder-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+#ladder-table thead {
+    position: sticky;
+    top: 0;
+    background: #fff;
+    z-index: 1;
+}
+
+#ladder-table th,
+#ladder-table td {
+    border: 1px solid #000;
+    text-align: center;
+    vertical-align: middle;
+}
+
+#ladder-table th {
+    height: 28px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+/* 열 너비 */
+.col-comment  { width: 80px; }
+.col-linenum  { width: 20px; }
+
+/* 렁 행 */
+.rung-row td {
+    height: 120px;
+}
+
+/* COM 열 */
+.col-com { width: 40px; }
+
+/* Components 패널 */
+.comp-group {
+    margin-bottom: 12px;
+}
+
+.comp-group-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: #666;
+    padding: 4px 0;
+    border-bottom: 1px solid #ccc;
+    margin-bottom: 4px;
+}
+
+.comp-item {
+    padding: 6px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    border: 1px solid #ccc;
+    margin-bottom: 2px;
+}
+
+.comp-item:hover {
+    background: #eee;
+}

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PLC Simulator</title>
+    <link rel="stylesheet" href="css/layout.css">
+</head>
+<body>
+    <!-- 상단 옵션바 -->
+    <header id="toolbar">
+        <span class="toolbar-title">PLC Simulator</span>
+    </header>
+
+    <!-- 메인 영역 (3열) -->
+    <div id="main">
+        <!-- 왼쪽: Components -->
+        <aside id="panel-components">
+            <div class="panel-header">Components</div>
+            <div class="panel-body">
+                <div class="comp-group">
+                    <div class="comp-group-title">Input (X)</div>
+                    <div class="comp-item" data-type="PB|NO">PushButton A접점</div>
+                    <div class="comp-item" data-type="PB|NC">PushButton B접점</div>
+                </div>
+                <div class="comp-group">
+                    <div class="comp-group-title">Relay (M)</div>
+                    <div class="comp-item" data-type="COIL|OUT">Coil</div>
+                    <div class="comp-item" data-type="RY|NO">Contact A접점</div>
+                    <div class="comp-item" data-type="RY|NC">Contact B접점</div>
+                </div>
+                <div class="comp-group">
+                    <div class="comp-group-title">Output (Y)</div>
+                    <div class="comp-item" data-type="LAMP|OUT">Lamp</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 가운데: 래더 에디터 -->
+        <main id="workspace">
+            <div class="panel-header">Ladder Editor</div>
+            <div id="ladder-scroll">
+                <table id="ladder-table">
+                    <colgroup>
+                        <col style="width:150px">
+                        <col style="width:20px">
+                        <col><col><col><col><col><col><col><col><col><col>
+                        <col style="width:40px">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th colspan="2">Load</th>
+                            <th colspan="10">Ladder</th>
+                            <th class="col-com">COM</th>
+                        </tr>
+                        <tr>
+                            <th class="col-comment">Comment</th>
+                            <th class="col-linenum">#</th>
+                            <th>0</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="rung-row"><td></td><td>0</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                        <tr class="rung-row"><td></td><td>1</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                        <tr class="rung-row"><td></td><td>2</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                        <tr class="rung-row"><td></td><td>3</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                        <tr class="rung-row"><td></td><td>4</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                        <tr class="rung-row"><td></td><td>5</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                        <tr class="rung-row"><td></td><td>6</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                        <tr class="rung-row"><td></td><td>7</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                        <tr class="rung-row"><td></td><td>8</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                        <tr class="rung-row"><td></td><td>9</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+
+        <!-- 오른쪽: Variable Monitor -->
+        <aside id="panel-monitor">
+            <div class="panel-header">Variable Monitor</div>
+            <div class="panel-body"></div>
+        </aside>
+    </div>
+</body>
+</html>
