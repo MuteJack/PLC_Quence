@@ -1,0 +1,59 @@
+{
+  "symbols": {
+    "PB": {
+      "category": "contact",
+      "name": "푸시버튼",
+      "description": "Push Button - 외부 입력 접점",
+      "allowed_types": ["NO", "NC"]
+    },
+    "RY": {
+      "category": "contact",
+      "name": "릴레이접점",
+      "description": "Relay Contact - 내부/출력 릴레이 접점",
+      "allowed_types": ["NO", "NC"]
+    },
+    "COIL": {
+      "category": "coil",
+      "name": "코일",
+      "description": "Output Coil",
+      "allowed_types": ["OUT", "SET", "RST"]
+    },
+    "TMR": {
+      "category": "timer",
+      "name": "타이머",
+      "description": "Timer Function Block",
+      "allowed_types": ["TON", "TOF", "TP"],
+      "params": ["preset"]
+    },
+    "CTR": {
+      "category": "counter",
+      "name": "카운터",
+      "description": "Counter Function Block",
+      "allowed_types": ["CTU", "CTD", "CTUD"],
+      "params": ["preset"]
+    }
+  },
+
+  "contact_types": {
+    "NO": {"name": "a접점", "description": "Normally Open"},
+    "NC": {"name": "b접점", "description": "Normally Closed"}
+  },
+
+  "coil_types": {
+    "OUT": {"name": "출력",   "description": "일반 출력"},
+    "SET": {"name": "SET",    "description": "래치 (자기유지)"},
+    "RST": {"name": "RST",    "description": "언래치 (리셋)"}
+  },
+
+  "timer_types": {
+    "TON": {"name": "On딜레이",  "description": "On-Delay Timer"},
+    "TOF": {"name": "Off딜레이", "description": "Off-Delay Timer"},
+    "TP":  {"name": "펄스",      "description": "Pulse Timer"}
+  },
+
+  "counter_types": {
+    "CTU":  {"name": "업카운터",      "description": "Count Up"},
+    "CTD":  {"name": "다운카운터",    "description": "Count Down"},
+    "CTUD": {"name": "업다운카운터",  "description": "Count Up/Down"}
+  }
+}

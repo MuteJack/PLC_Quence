@@ -126,6 +126,13 @@ html, body {
 /* Components 패널 */
 .comp-group {
     margin-bottom: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+}
+
+.comp-group-title {
+    width: 100%;
 }
 
 .comp-group-title {
@@ -138,11 +145,25 @@ html, body {
 }
 
 .comp-item {
-    padding: 6px 8px;
-    font-size: 12px;
+    padding: 4px;
+    font-size: 11px;
     cursor: pointer;
     border: 1px solid #ccc;
-    margin-bottom: 2px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: calc(50% - 1px);
+}
+
+.comp-item img {
+    width: 100%;
+    max-width: 100px;
+    height: 40px;
+    object-fit: contain;
+}
+
+.comp-item span {
+    margin-top: 2px;
 }
 
 .comp-item:hover {
