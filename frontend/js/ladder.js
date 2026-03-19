@@ -1451,13 +1451,272 @@ const Ladder = {
     // === Run/Stop ===
 
     save() {
-        // TODO: 저장 기능 구현
-        alert('Save 기능은 아직 구현되지 않았습니다.');
+        const csv = this.exportCSV();
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'ladder_project.csv';
+        a.click();
+        URL.revokeObjectURL(url);
     },
 
     load() {
-        // TODO: 로드 기능 구현
-        alert('Load 기능은 아직 구현되지 않았습니다.');
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.csv';
+        input.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                this.importCSV(ev.target.result);
+            };
+            reader.readAsText(file);
+        });
+        input.click();
+    },
+
+    exportCSV() {
+        const lines = [];
+
+        // [meta] 섹션
+        lines.push('[meta]');
+        lines.push('key,value');
+        lines.push(`version,1.0`);
+        lines.push(`stepCount,${this.stepCount}`);
+        lines.push(`outputCol,${this.outputCol}`);
+        lines.push(`savedAt,${new Date().toISOString()}`);
+        lines.push('');
+
+        // [ladder] 섹션
+        lines.push('[ladder]');
+        const header = ['rung', 'type', 'comment'];
+        for (let i = 0; i < this.stepCount; i++) {
+            header.push(`s${i}`);
+            if (i < this.stepCount - 1) header.push(`v${i}`);
+        }
+        lines.push(header.join(','));
+
+        const tbody = document.querySelector('#ladder-table tbody');
+        const rows = tbody.querySelectorAll('.rung-row:not(.rung-add)');
+
+        let currentRung = -1;
+        rows.forEach(row => {
+            const isBranch = row.classList.contains('rung-branch');
+            const cells = Array.from(row.children);
+
+            if (!isBranch) {
+                currentRung++;
+            }
+
+            const rungComment = isBranch ? '' : this.escapeCSV(cells[0].textContent.trim());
+            const type = isBranch ? 'branch' : 'main';
+
+            const stepTds = cells.slice(2, 2 + this.stepCount);
+            const values = [currentRung, type, rungComment];
+
+            for (let i = 0; i < this.stepCount; i++) {
+                const td = stepTds[i];
+                if (!td) { values.push(''); if (i < this.stepCount - 1) values.push(''); continue; }
+
+                const symbol = td.querySelector('.step-symbol');
+                const nameDiv = td.querySelector('.step-name');
+                const comp = symbol ? symbol.dataset.component : '';
+                const varName = nameDiv ? nameDiv.textContent.trim() : '';
+
+                // step 값: 계열:변수명, Line은 'line', 메인 빈 셀도 'line'
+                if (comp === 'Line') {
+                    values.push('line');
+                } else if (comp && comp !== 'Output_Basic') {
+                    const family = this.COMP_FAMILY[comp] || '';
+                    values.push(varName ? `${family}:${varName}` : family);
+                } else if (!comp && !isBranch) {
+                    values.push('line');
+                } else {
+                    values.push('');
+                }
+
+                // vertical line 값 (마지막 step 제외)
+                if (i < this.stepCount - 1) {
+                    const cell = td.querySelector('.step-cell');
+                    const hasVDown = cell && cell.querySelector('.vertical-line.v-down');
+                    const hasVUp = cell && cell.querySelector('.vertical-line.v-up');
+                    if (hasVDown) values.push('d');
+                    else if (hasVUp) values.push('u');
+                    else values.push('');
+                }
+            }
+
+            lines.push(values.join(','));
+        });
+
+        // [variables] 섹션
+        lines.push('');
+        lines.push('[variables]');
+        lines.push('name,comment');
+        Object.keys(this.variableComments).sort().forEach(name => {
+            lines.push(`${name},${this.escapeCSV(this.variableComments[name])}`);
+        });
+
+        return lines.join('\n');
+    },
+
+    escapeCSV(str) {
+        if (!str) return '';
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return '"' + str.replace(/"/g, '""') + '"';
+        }
+        return str;
+    },
+
+    importCSV(csvText) {
+        const lines = csvText.split('\n').map(l => l.trim()).filter(l => l);
+        let section = '';
+        let meta = {};
+        let ladderRows = [];
+        let variables = {};
+
+        for (const line of lines) {
+            if (line === '[meta]') { section = 'meta'; continue; }
+            if (line === '[ladder]') { section = 'ladder'; continue; }
+            if (line === '[variables]') { section = 'variables'; continue; }
+            if (line.startsWith('rung,') || line.startsWith('name,') || line.startsWith('key,')) continue; // 헤더 스킵
+
+            if (section === 'meta') {
+                const parts = line.split(',');
+                if (parts[0]) meta[parts[0]] = parts[1];
+            } else if (section === 'ladder') {
+                ladderRows.push(line.split(','));
+            } else if (section === 'variables') {
+                const parts = line.split(',');
+                if (parts[0]) variables[parts[0]] = parts.slice(1).join(',').replace(/^"|"$/g, '');
+            }
+        }
+
+        // 기존 래더 초기화
+        this.clearAll();
+
+        // 래더 복원
+        for (const row of ladderRows) {
+            const rungNum = parseInt(row[0]);
+            const type = row[1];
+            const comment = row[2] || '';
+
+            // 새 rung 필요 시 추가
+            if (type === 'main') {
+                if (rungNum > 0) this.addRung();
+
+                // rung comment 설정
+                const tbody = document.querySelector('#ladder-table tbody');
+                const mainRows = tbody.querySelectorAll('.rung-row:not(.rung-add):not(.rung-branch)');
+                const tr = mainRows[mainRows.length - 1];
+                if (tr && comment) tr.children[0].textContent = comment;
+            }
+
+            // 현재 행 찾기
+            const tbody = document.querySelector('#ladder-table tbody');
+            let tr;
+            if (type === 'branch') {
+                const mainRows = tbody.querySelectorAll('.rung-row:not(.rung-add):not(.rung-branch)');
+                const mainRow = mainRows[rungNum];
+                if (!mainRow) continue;
+
+                // branch row 생성
+                tr = mainRow.nextElementSibling;
+                if (!tr || !tr.classList.contains('rung-branch')) {
+                    tr = this.createBranchRow(mainRow);
+                }
+            } else {
+                const mainRows = tbody.querySelectorAll('.rung-row:not(.rung-add):not(.rung-branch)');
+                tr = mainRows[rungNum];
+            }
+            if (!tr) continue;
+
+            const cells = Array.from(tr.children);
+            const stepTds = cells.slice(2, 2 + this.stepCount);
+
+            // step과 vertical line 복원
+            let colIdx = 3; // row[3]부터 데이터
+            for (let i = 0; i < this.stepCount; i++) {
+                const stepVal = row[colIdx] || '';
+                colIdx++;
+
+                // step 배치
+                if (stepVal && stepVal !== '') {
+                    const td = stepTds[i];
+                    if (!td) { if (i < this.stepCount - 1) colIdx++; continue; }
+                    const symbol = td.querySelector('.step-symbol');
+                    const back = td.querySelector('.step-symbol-back');
+
+                    // horizontal line
+                    if (stepVal === 'line') {
+                        back.innerHTML = `<img src="images/Components/Line_Normal.svg">`;
+                        symbol.dataset.component = 'Line';
+                    } else {
+                    // 계열:변수명 → 접두사로 컴포넌트 결정
+                    const parts = stepVal.split(':');
+                    const family = parts[0];
+                    const varName = parts[1] || '';
+                    const nameDiv = td.querySelector('.step-name');
+
+                    // 변수명 접두사로 컴포넌트 타입 결정
+                    const prefix = varName ? varName.charAt(0) : '';
+                    const compType = (prefix && this.PREFIX_TO_COMP[family])
+                        ? this.PREFIX_TO_COMP[family][prefix]
+                        : null;
+
+                    if (compType) {
+                        back.innerHTML = `<img src="images/Components/${compType}_Normal.svg">`;
+                        symbol.dataset.component = compType;
+                    }
+                    if (varName && nameDiv) {
+                        nameDiv.textContent = varName;
+                        this.registerVariable(varName, family);
+                    }
+                    }
+                }
+
+                // vertical line (마지막 step 제외)
+                if (i < this.stepCount - 1) {
+                    const vVal = row[colIdx] || '';
+                    colIdx++;
+
+                    if (vVal === 'd' || vVal === 'u') {
+                        const td = stepTds[i];
+                        if (td) {
+                            const cell = td.querySelector('.step-cell');
+                            if (cell) {
+                                const dir = vVal === 'd' ? 'v-down' : 'v-up';
+                                this.addVerticalLine(cell, 'right', dir);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // variables 복원
+        this.variableComments = variables;
+        this.syncAllComments();
+        this.updateVariableMonitor();
+    },
+
+    clearAll() {
+        const tbody = document.querySelector('#ladder-table tbody');
+        const rows = tbody.querySelectorAll('.rung-row:not(.rung-add)');
+        rows.forEach(row => row.remove());
+
+        this.usedVariables = {};
+        this.usedOutputVariables = {};
+        this.variableComments = {};
+        this.rungCount = 0;
+        this.selectedRow = null;
+        this.selectedStep = null;
+        this.selectedVertical = null;
+
+        // 초기 rung 1개 추가
+        this.addRung();
     },
 
     toggleRun() {
