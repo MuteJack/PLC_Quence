@@ -82,21 +82,27 @@ html, body {
 /* 래더 테이블 */
 #ladder-scroll {
     flex: 1;
-    overflow-y: auto;
+    overflow: auto;
+    scroll-snap-type: y mandatory;
+    scroll-padding-top: 56px;
 }
 
 #ladder-table {
-    width: 100%;
     border-collapse: separate;
     border-spacing: 0;
     table-layout: fixed;
+    width: 1410px;
+    min-width: 1410px;
 }
 
 #ladder-table thead {
     position: sticky;
     top: 0;
+    z-index: 2;
+}
+
+#ladder-table thead tr {
     background: #fff;
-    z-index: 1;
 }
 
 #ladder-table th,
@@ -116,26 +122,46 @@ html, body {
     border-top: 1px solid #000;
 }
 
+/* 래더 영역 좌/우 경계 굵게 (body만, header 제외) */
+#ladder-table td:nth-child(2) {
+    border-right: 4px solid #000;
+}
+
+#ladder-table td:nth-child(14) {
+    border-right: 4px solid #000;
+}
+
 #ladder-table th {
     height: 28px;
     font-size: 11px;
     font-weight: 600;
+    background: #fff;
 }
 
 /* 열 너비 */
 .col-comment  { width: 80px; }
 .col-linenum  { width: 20px; }
 
-/* 렁 행 */
-
 /* COM 열 */
 .col-com { width: 40px; }
+
+/* 렁 행 */
+.rung-row td {
+    padding: 0;
+    vertical-align: top;
+    text-align: left;
+}
+
+.rung-row {
+    scroll-snap-align: start;
+}
 
 /* Step 셀 3단 구조 */
 .step-cell {
     display: flex;
     flex-direction: column;
     height: 120px;
+    position: relative;
 }
 
 .step-name {
@@ -146,14 +172,59 @@ html, body {
 .step-symbol {
     height: 50px;
     border-bottom: 1px solid #ccc;
+    position: relative;
 }
+
+.step-symbol-back {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: url('../images/Components/Line_Normal.svg') no-repeat center / 100% 100%;
+}
+
+/* branch 셀: 기본 수평선 없음 */
+.branch-cell .step-symbol-back {
+    background: none;
+}
+
+.step-symbol-back img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: #fff;
+}
+
+.step-symbol-fore {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    z-index: 1;
+}
+
+.step-symbol-left {
+    width: 10px;
+    border-right: 1px solid #ccc;
+    flex-shrink: 0;
+}
+
+.step-symbol-center {
+    flex: 1;
+}
+
+.step-symbol-right {
+    width: 10px;
+    border-left: 1px solid #ccc;
+    flex-shrink: 0;
+}
+
 
 .step-comment {
     height: 35px;
-}
-
-.rung-row td {
-    padding: 0;
 }
 
 /* Rung 선택 */
@@ -230,3 +301,80 @@ html, body {
 .comp-item:hover {
     background: #eee;
 }
+
+.comp-selected {
+    border-color: #0066ff;
+    background: #e0e8ff;
+}
+
+/* 배치 모드: step-symbol에 호버 표시 */
+.placing-mode .step-symbol-center {
+    cursor: crosshair;
+}
+
+.placing-mode .step-symbol-center:hover {
+    background: rgba(0,0,255,0.1);
+}
+
+.placing-mode .step-symbol-left,
+.placing-mode .step-symbol-right {
+    cursor: col-resize;
+}
+
+.placing-mode .step-symbol-left:hover,
+.placing-mode .step-symbol-right:hover {
+    background: rgba(0,255,0,0.15);
+}
+
+/* Step 선택 */
+.step-selected .step-symbol-fore {
+    background: rgba(135, 206, 250, 0.3);
+}
+
+/* Vertical line: 셀 경계에 세로선 */
+.vertical-line {
+    position: absolute;
+    top: 0;
+    width: 2px;
+    background: #000;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.vertical-line-right {
+    right: -1px;
+}
+
+.vertical-line-left {
+    left: -1px;
+}
+
+/* 아래로 반줄 (메인 행) */
+.vertical-line.v-down {
+    top: 50%;
+    height: 50%;
+}
+
+/* 위로 반줄 (branch 행) */
+.vertical-line.v-up {
+    top: 0;
+    height: 50%;
+}
+
+/* Vertical line 선택 */
+.vertical-selected {
+    background: #0066ff !important;
+    width: 4px !important;
+}
+
+/* 인접 셀 하이라이트 */
+.adjacent-highlight {
+    background: rgba(0,255,0,0.15);
+}
+
+/* 마지막 step(COM 바로 앞)의 오른쪽 클릭 영역 숨기기 */
+.rung-row:not(.rung-add) td:nth-last-child(2) .step-symbol-right {
+    display: none;
+}
+
+/* 배치된 이미지: step-symbol img로 이동 */
