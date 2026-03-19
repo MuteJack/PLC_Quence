@@ -32,6 +32,8 @@
                     <div class="comp-group-title">Contact</div>
                     <div class="comp-item" data-type="Contact_Memory_A"><img src="images/Components/Contact_Memory_A_Normal.svg"><span>Memory_A</span></div>
                     <div class="comp-item" data-type="Contact_Memory_B"><img src="images/Components/Contact_Memory_B_Normal.svg"><span>Memory_B</span></div>
+                    <div class="comp-item" data-type="Contact_Y_A"><img src="images/Components/Contact_Y_A_Normal.svg"><span>Output_A</span></div>
+                    <div class="comp-item" data-type="Contact_Y_B"><img src="images/Components/Contact_Y_B_Normal.svg"><span>Output_B</span></div>
                     <div class="comp-item" data-type="Contact_Timer_A"><img src="images/Components/Contact_Timer_A_Normal.svg"><span>Timer_A</span></div>
                     <div class="comp-item" data-type="Contact_Timer_B"><img src="images/Components/Contact_Timer_B_Normal.svg"><span>Timer_B</span></div>
                 </div>
@@ -79,7 +81,19 @@
         <!-- 오른쪽: Variable Monitor -->
         <aside id="panel-monitor">
             <div class="panel-header">Variable Monitor</div>
-            <div class="panel-body"></div>
+            <div class="panel-body">
+                <table id="var-table">
+                    <thead>
+                        <tr>
+                            <th>Variable</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody id="var-tbody"></tbody>
+                </table>
+            </div>
         </aside>
     </div>
     <script src="js/ladder.js"></script>

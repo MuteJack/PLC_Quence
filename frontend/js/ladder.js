@@ -1,11 +1,48 @@
 const Ladder = {
     rungCount: 1,
     stepCount: 12,
-    outputCol: 11, // 마지막 열 = output 전용
+    outputCol: 11,
     selectedRow: null,
     selectedComponent: null,
     selectedStep: null,
     selectedVertical: null,
+
+    // 컴포넌트 계열 분류
+    COMP_FAMILY: {
+        'PB_A': 'contact_a',
+        'Contact_Memory_A': 'contact_a',
+        'Contact_Timer_A': 'contact_a',
+        'Contact_Y_A': 'contact_a',
+        'PB_B': 'contact_b',
+        'Contact_Memory_B': 'contact_b',
+        'Contact_Timer_B': 'contact_b',
+        'Contact_Y_B': 'contact_b',
+        'Output_Y': 'output',
+        'Output_Timer': 'output',
+        'Function_Memory': 'output',
+        'Output_Basic': 'output',
+    },
+
+    // 계열 + 접두사 → 컴포넌트 타입
+    PREFIX_TO_COMP: {
+        'contact_a': { 'X': 'PB_A', 'M': 'Contact_Memory_A', 'Y': 'Contact_Y_A', 'T': 'Contact_Timer_A' },
+        'contact_b': { 'X': 'PB_B', 'M': 'Contact_Memory_B', 'Y': 'Contact_Y_B', 'T': 'Contact_Timer_B' },
+        'output': { 'Y': 'Output_Y', 'M': 'Function_Memory', 'T': 'Output_Timer' },
+    },
+
+    // 계열별 허용 접두사
+    FAMILY_PREFIXES: {
+        'contact_a': ['X', 'M', 'Y', 'T'],
+        'contact_b': ['X', 'M', 'Y', 'T'],
+        'output': ['Y', 'M', 'T'],
+    },
+
+    // 할당된 변수명 추적 (변수명 → 사용 횟수)
+    usedVariables: {},
+    // output 계열 전용 추적 (코일 중복 방지용)
+    usedOutputVariables: {},
+    // 변수별 코멘트 (변수명 → 설명)
+    variableComments: {},
 
     STEP_CELL_HTML: '<td><div class="step-cell"><div class="step-name"></div><div class="step-symbol"><div class="step-symbol-back"></div><div class="step-symbol-fore"><div class="step-symbol-left"></div><div class="step-symbol-center"></div><div class="step-symbol-right"></div></div></div><div class="step-comment"></div></div></td>',
 
@@ -30,12 +67,41 @@ const Ladder = {
                 }
             }
 
-            // Step Comment (컴포넌트가 있는 셀만)
+            // Step Name (컴포넌트가 있는 셀 또는 빈 셀)
+            const stepName = e.target.closest('.step-name');
+            if (stepName) {
+                const td = stepName.closest('td');
+                const tr = td.closest('tr');
+                if (!tr || tr.classList.contains('rung-add')) return;
+
+                const symbol = stepName.closest('.step-cell').querySelector('.step-symbol');
+                const comp = symbol ? symbol.dataset.component : null;
+
+                // Line은 제외
+                if (comp === 'Line') return;
+
+                // outputCol은 기존 방식
+                const cells = Array.from(tr.children);
+                const stepTds = cells.slice(2, 2 + this.stepCount);
+                const idx = stepTds.indexOf(td);
+                if (idx === this.outputCol) {
+                    if (comp) this.editStepName(stepName, comp);
+                    return;
+                }
+
+                // 빈 셀 또는 컴포넌트 셀 → 변수명 입력 (빈 셀은 contact_a 기본)
+                this.editStepNameWithCreate(stepName, td, tr);
+                return;
+            }
+
+            // Step Comment (변수명이 있는 셀만)
             const stepComment = e.target.closest('.step-comment');
             if (stepComment) {
-                const symbol = stepComment.closest('.step-cell').querySelector('.step-symbol');
-                if (symbol && symbol.dataset.component && symbol.dataset.component !== 'Line') {
-                    this.editComment(stepComment);
+                const stepCell = stepComment.closest('.step-cell');
+                const nameDiv = stepCell.querySelector('.step-name');
+                const varName = nameDiv ? nameDiv.textContent.trim() : '';
+                if (varName) {
+                    this.editVariableComment(stepComment, varName);
                 }
             }
         });
@@ -316,8 +382,13 @@ const Ladder = {
         const stepTds = cells.slice(2, 2 + this.stepCount);
         const deletedIdx = stepTds.indexOf(td);
 
-        // outputCol의 output 삭제 → Output_Basic으로 복원 (comment 유지)
+        // outputCol의 output 삭제 → Output_Basic으로 복원 (comment 유지, 변수명 해제)
         if (!isBranch && deletedIdx === this.outputCol) {
+            const nameDiv = td.querySelector('.step-name');
+            if (nameDiv && nameDiv.textContent.trim()) {
+                this.unregisterVariable(nameDiv.textContent.trim());
+                nameDiv.textContent = '';
+            }
             const back = symbolDiv.querySelector('.step-symbol-back');
             back.innerHTML = '<img src="images/Components/Output_Basic_Normal.svg">';
             symbolDiv.dataset.component = 'Output_Basic';
@@ -358,9 +429,15 @@ const Ladder = {
             const lastSymbol = stepTds[lastIdx].querySelector('.step-symbol');
             const lastBack = stepTds[lastIdx].querySelector('.step-symbol-back');
             const lastComment = stepTds[lastIdx].querySelector('.step-comment');
+            const lastNameDiv = stepTds[lastIdx].querySelector('.step-name');
+            // 변수명 해제
+            if (lastNameDiv && lastNameDiv.textContent.trim()) {
+                this.unregisterVariable(lastNameDiv.textContent.trim());
+            }
             lastBack.innerHTML = '';
             delete lastSymbol.dataset.component;
             if (lastComment) lastComment.textContent = '';
+            if (lastNameDiv) lastNameDiv.textContent = '';
         }
 
         // vertical line 재배치
@@ -665,6 +742,8 @@ const Ladder = {
         const dstBack = dstTd.querySelector('.step-symbol-back');
         const srcComment = srcTd.querySelector('.step-comment');
         const dstComment = dstTd.querySelector('.step-comment');
+        const srcName = srcTd.querySelector('.step-name');
+        const dstName = dstTd.querySelector('.step-name');
 
         dstBack.innerHTML = srcBack.innerHTML;
         if (srcSymbol.dataset.component) {
@@ -675,6 +754,9 @@ const Ladder = {
 
         if (srcComment && dstComment) {
             dstComment.textContent = srcComment.textContent;
+        }
+        if (srcName && dstName) {
+            dstName.textContent = srcName.textContent;
         }
     },
 
@@ -764,7 +846,370 @@ const Ladder = {
         return tr;
     },
 
+    // === 변수명 편집 ===
+
+    getNextVariableName(prefix) {
+        for (let i = 0; i < 1000; i++) {
+            const name = `${prefix}${i}`;
+            if (!this.usedVariables[name] || this.usedVariables[name] === 0) {
+                return name;
+            }
+        }
+        return `${prefix}0`;
+    },
+
+    registerVariable(name, family) {
+        if (!name) return;
+        this.usedVariables[name] = (this.usedVariables[name] || 0) + 1;
+        if (family === 'output') {
+            this.usedOutputVariables[name] = (this.usedOutputVariables[name] || 0) + 1;
+        }
+        this.updateVariableMonitor();
+    },
+
+    unregisterVariable(name, family) {
+        if (!name) return;
+        if (this.usedVariables[name]) {
+            this.usedVariables[name]--;
+            if (this.usedVariables[name] <= 0) delete this.usedVariables[name];
+        }
+        if (family === 'output' && this.usedOutputVariables[name]) {
+            this.usedOutputVariables[name]--;
+            if (this.usedOutputVariables[name] <= 0) delete this.usedOutputVariables[name];
+        }
+        this.updateVariableMonitor();
+    },
+
+    updateVariableMonitor() {
+        const tbody = document.getElementById('var-tbody');
+        if (!tbody) return;
+
+        const typeMap = { 'X': 'Input', 'Y': 'Output', 'M': 'Memory', 'T': 'Timer' };
+        const colorMap = { 'X': 'var-x', 'Y': 'var-y', 'M': 'var-m', 'T': 'var-t' };
+
+        // 변수명 정렬: 접두사 순서(X→M→T→Y) → 번호 순
+        const order = ['X', 'M', 'T', 'Y'];
+        const sorted = Object.keys(this.usedVariables).sort((a, b) => {
+            const pa = a.match(/^([A-Z])(\d+)$/);
+            const pb = b.match(/^([A-Z])(\d+)$/);
+            if (!pa || !pb) return 0;
+            const oa = order.indexOf(pa[1]);
+            const ob = order.indexOf(pb[1]);
+            if (oa !== ob) return oa - ob;
+            return parseInt(pa[2]) - parseInt(pb[2]);
+        });
+
+        tbody.innerHTML = sorted.map(name => {
+            const prefix = name.charAt(0);
+            const cls = colorMap[prefix] || '';
+            const type = typeMap[prefix] || '?';
+            const desc = this.variableComments[name] || '';
+            return `<tr class="${cls}"><td>${name}</td><td>${type}</td><td>${desc}</td><td>-</td></tr>`;
+        }).join('');
+    },
+
+    validateVariableName(name, family) {
+        const prefixes = this.FAMILY_PREFIXES[family];
+        if (!prefixes) return false;
+
+        const match = name.match(/^([A-Z])(\d+)$/);
+        if (!match) return false;
+
+        const prefix = match[1];
+        if (!prefixes.includes(prefix)) return false;
+
+        return true;
+    },
+
+    // 접두사에 따라 컴포넌트 변경
+    updateComponentByPrefix(td, prefix, family) {
+        const newCompType = this.PREFIX_TO_COMP[family][prefix];
+        if (!newCompType) return;
+
+        const symbol = td.querySelector('.step-symbol');
+        const back = td.querySelector('.step-symbol-back');
+        back.innerHTML = `<img src="images/Components/${newCompType}_Normal.svg">`;
+        symbol.dataset.component = newCompType;
+    },
+
+    // 빈 셀 또는 기존 컴포넌트에서 변수명 직접 입력 (a/b 접미사 지원)
+    editStepNameWithCreate(stepNameDiv, td, tr) {
+        if (stepNameDiv.querySelector('input')) return;
+
+        const symbol = td.querySelector('.step-symbol');
+        const comp = symbol ? symbol.dataset.component : null;
+        // 기존 컴포넌트가 있으면 계열 판별, 없으면 contact_a 기본
+        let currentFamily = comp ? this.COMP_FAMILY[comp] : null;
+        const currentText = stepNameDiv.textContent.trim();
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = currentText;
+        input.className = 'step-name-input';
+        input.placeholder = 'X0, M0a, T1b...';
+
+        stepNameDiv.textContent = '';
+        stepNameDiv.appendChild(input);
+        input.focus();
+        input.select();
+
+        const finish = () => {
+            let value = input.value.trim().toUpperCase();
+
+            if (!value) {
+                if (currentText) this.unregisterVariable(currentText, currentFamily);
+                stepNameDiv.textContent = '';
+                return;
+            }
+
+            // a/b 접미사 처리
+            let contactType = null;
+            if (value.endsWith('A')) {
+                contactType = 'a';
+                value = value.slice(0, -1);
+            } else if (value.endsWith('B')) {
+                contactType = 'b';
+                value = value.slice(0, -1);
+            }
+
+            // 변수명 검증 (접두사 + 숫자)
+            const match = value.match(/^([A-Z])(\d+)$/);
+            if (!match) {
+                alert('Error: 잘못된 변수명입니다.\n\n형식: 접두사(X/M/Y/T) + 숫자\n접미사 a/b로 A접점/B접점 전환 가능\n\n예: X0, M1a, T2b');
+                stepNameDiv.textContent = currentText;
+                return;
+            }
+
+            const prefix = match[1];
+
+            // 접두사로 계열 결정
+            let family;
+            if (contactType === 'b') {
+                family = 'contact_b';
+            } else if (contactType === 'a') {
+                family = 'contact_a';
+            } else if (currentFamily === 'contact_a' || currentFamily === 'contact_b') {
+                family = currentFamily;
+            } else if (currentFamily === 'output') {
+                family = 'output';
+            } else {
+                // 빈 셀: 기본 contact_a
+                family = 'contact_a';
+            }
+
+            // output 계열인데 X 접두사는 불가
+            if (family === 'output' && prefix === 'X') {
+                alert('Error: 출력(코일)에 X 변수는 사용할 수 없습니다.');
+                stepNameDiv.textContent = currentText;
+                return;
+            }
+
+            // contact 계열에서 허용 접두사 체크
+            const prefixes = this.FAMILY_PREFIXES[family];
+            if (!prefixes || !prefixes.includes(prefix)) {
+                alert(`Error: 잘못된 변수명입니다.\n\n허용 접두사: ${prefixes ? prefixes.join(', ') : '없음'}`);
+                stepNameDiv.textContent = currentText;
+                return;
+            }
+
+            // 코일 중복 체크
+            if (family === 'output' && value !== currentText) {
+                const count = this.usedOutputVariables[value] || 0;
+                if (count >= 1) {
+                    alert(`Error: ${value}는 이미 다른 코일에서 사용 중입니다.\n\n같은 변수의 출력(코일)은 1개만 허용됩니다.`);
+                    stepNameDiv.textContent = currentText;
+                    return;
+                }
+            }
+
+            // 빈 셀이면 컴포넌트 생성 + 왼쪽부터 정렬
+            const isEmptyCell = !comp || comp === 'Line';
+            if (isEmptyCell) {
+                const newCompType = this.PREFIX_TO_COMP[family][prefix];
+                if (!newCompType) {
+                    stepNameDiv.textContent = currentText;
+                    return;
+                }
+
+                // 자동 배치: 왼쪽부터 정렬
+                const cells = Array.from(tr.children);
+                const stepTds = cells.slice(2, 2 + this.stepCount);
+                const clickedIdx = stepTds.indexOf(td);
+                const targetTd = this.findAutoPlaceTd(tr, newCompType, clickedIdx);
+                if (!targetTd) {
+                    stepNameDiv.textContent = currentText;
+                    return;
+                }
+
+                // 대상 셀에 컴포넌트 배치
+                const targetSymbol = targetTd.querySelector('.step-symbol');
+                const targetBack = targetTd.querySelector('.step-symbol-back');
+                const targetName = targetTd.querySelector('.step-name');
+                targetBack.innerHTML = `<img src="images/Components/${newCompType}_Normal.svg">`;
+                targetSymbol.dataset.component = newCompType;
+
+                if (currentText) this.unregisterVariable(currentText, family);
+                this.registerVariable(value, family);
+                targetName.textContent = value;
+
+                // 원래 셀의 input 정리 (대상이 다른 셀일 수 있음)
+                if (targetTd !== td) {
+                    stepNameDiv.textContent = '';
+                }
+                this.syncAllComments();
+                return;
+            }
+
+            // 기존 컴포넌트: 변수명 변경 + 접두사에 따라 이미지 변경
+            if (currentText) this.unregisterVariable(currentText, family);
+            this.registerVariable(value, family);
+            stepNameDiv.textContent = value;
+            this.updateComponentByPrefix(td, prefix, family);
+            this.syncAllComments();
+        };
+
+        input.addEventListener('blur', finish);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') input.blur();
+            if (e.key === 'Escape') {
+                input.value = currentText;
+                input.blur();
+            }
+        });
+    },
+
+    editStepName(stepNameDiv, componentType) {
+        if (stepNameDiv.querySelector('input')) return;
+
+        const family = this.COMP_FAMILY[componentType];
+        if (!family) return;
+
+        const prefixes = this.FAMILY_PREFIXES[family];
+        const currentText = stepNameDiv.textContent.trim();
+        const suggestion = currentText || this.getNextVariableName(prefixes[0]);
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = suggestion;
+        input.className = 'step-name-input';
+        input.placeholder = `${prefixes.join('/')}0`;
+
+        stepNameDiv.textContent = '';
+        stepNameDiv.appendChild(input);
+        input.focus();
+        input.select();
+
+        const td = stepNameDiv.closest('td');
+
+        const finish = () => {
+            const value = input.value.trim().toUpperCase();
+
+            if (!value) {
+                this.unregisterVariable(currentText, family);
+                stepNameDiv.textContent = '';
+                return;
+            }
+
+            if (!this.validateVariableName(value, family)) {
+                const examples = prefixes.map(p => `${p}0, ${p}1, ${p}2...`).join('\n  ');
+                alert(`Error: 잘못된 변수명입니다.\n\n사용 가능한 변수명:\n  ${examples}\n\n형식: 접두사(${prefixes.join('/')}) + 숫자`);
+                stepNameDiv.textContent = currentText;
+                return;
+            }
+
+            // 코일 중복 체크 (output 계열, 중복 금지)
+            if (family === 'output' && value !== currentText) {
+                const count = this.usedOutputVariables[value] || 0;
+                if (count >= 1) {
+                    alert(`Error: ${value}는 이미 다른 코일에서 사용 중입니다.\n\n같은 변수의 출력(코일)은 1개만 허용됩니다.`);
+                    stepNameDiv.textContent = currentText;
+                    return;
+                }
+            }
+
+            this.unregisterVariable(currentText, family);
+            this.registerVariable(value, family);
+            stepNameDiv.textContent = value;
+
+            // 접두사에 따라 컴포넌트 이미지 변경
+            const prefix = value.match(/^([A-Z])/)[1];
+            this.updateComponentByPrefix(td, prefix, family);
+            this.syncAllComments();
+        };
+
+        input.addEventListener('blur', finish);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') input.blur();
+            if (e.key === 'Escape') {
+                input.value = currentText;
+                input.blur();
+            }
+        });
+    },
+
     // === Comment 편집 ===
+
+    editVariableComment(stepCommentDiv, varName) {
+        if (stepCommentDiv.querySelector('input')) return;
+
+        const currentText = this.variableComments[varName] || '';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = currentText;
+        input.className = 'comment-input';
+
+        stepCommentDiv.textContent = '';
+        stepCommentDiv.appendChild(input);
+        input.focus();
+
+        const finish = () => {
+            const value = input.value.trim();
+            if (value) {
+                this.variableComments[varName] = value;
+            } else {
+                delete this.variableComments[varName];
+            }
+            this.syncVariableComments(varName);
+            this.updateVariableMonitor();
+        };
+
+        input.addEventListener('blur', finish);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') input.blur();
+            if (e.key === 'Escape') {
+                input.value = currentText;
+                input.blur();
+            }
+        });
+    },
+
+    // 같은 변수명의 모든 step-comment를 동기화
+    syncVariableComments(varName) {
+        const comment = this.variableComments[varName] || '';
+        document.querySelectorAll('#ladder-table tbody .step-cell').forEach(cell => {
+            const nameDiv = cell.querySelector('.step-name');
+            const commentDiv = cell.querySelector('.step-comment');
+            if (nameDiv && commentDiv && nameDiv.textContent.trim() === varName) {
+                commentDiv.textContent = comment;
+            }
+        });
+    },
+
+    // 모든 변수의 코멘트를 동기화
+    syncAllComments() {
+        document.querySelectorAll('#ladder-table tbody .step-cell').forEach(cell => {
+            const nameDiv = cell.querySelector('.step-name');
+            const commentDiv = cell.querySelector('.step-comment');
+            if (nameDiv && commentDiv) {
+                const varName = nameDiv.textContent.trim();
+                if (varName && this.variableComments[varName]) {
+                    commentDiv.textContent = this.variableComments[varName];
+                } else if (!varName) {
+                    commentDiv.textContent = '';
+                }
+            }
+        });
+    },
 
     editComment(td) {
         if (td.querySelector('input')) return;
