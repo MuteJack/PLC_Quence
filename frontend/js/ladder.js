@@ -6,6 +6,7 @@ const Ladder = {
     selectedComponent: null,
     selectedStep: null,
     selectedVertical: null,
+    running: false,
 
     // 컴포넌트 계열 분류
     COMP_FAMILY: {
@@ -240,6 +241,10 @@ const Ladder = {
                 this.clearVerticalSelection();
             }
         });
+
+        // 패널 리사이즈
+        this.initResize('resize-right', 'panel-monitor', 'right');
+        this.initColResize();
     },
 
     // === Component 선택 ===
@@ -904,7 +909,7 @@ const Ladder = {
             const cls = colorMap[prefix] || '';
             const type = typeMap[prefix] || '?';
             const desc = this.variableComments[name] || '';
-            return `<tr class="${cls}"><td>${name}</td><td>${type}</td><td>${desc}</td><td>-</td></tr>`;
+            return `<tr class="${cls}"><td>${name}</td><td>${type}</td><td>-</td><td>${desc}</td></tr>`;
         }).join('');
     },
 
@@ -1305,6 +1310,7 @@ const Ladder = {
             row.children[1].textContent = i;
         });
         this.rungCount = rows.length;
+        this.updateLineNumWidth();
     },
 
     isRungEmpty(tr) {
@@ -1341,6 +1347,7 @@ const Ladder = {
         tbody.insertBefore(tr, addRow);
         this.setDefaultOutput(tr);
         this.rungCount++;
+        this.updateLineNumWidth();
     },
 
     // 메인 행의 outputCol에 Output_Basic 기본값 설정
@@ -1353,6 +1360,115 @@ const Ladder = {
         if (symbol && back && !symbol.dataset.component) {
             back.innerHTML = '<img src="images/Components/Output_Basic_Normal.svg">';
             symbol.dataset.component = 'Output_Basic';
+        }
+    },
+
+    // === 패널 리사이즈 ===
+
+    initResize(handleId, panelId, side) {
+        const handle = document.getElementById(handleId);
+        const panel = document.getElementById(panelId);
+        if (!handle || !panel) return;
+
+        let startX, startWidth;
+
+        handle.addEventListener('mousedown', (e) => {
+            startX = e.clientX;
+            startWidth = panel.offsetWidth;
+            handle.classList.add('active');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+
+            const onMove = (e) => {
+                const diff = e.clientX - startX;
+                const newWidth = side === 'left'
+                    ? startWidth + diff
+                    : startWidth - diff;
+                panel.style.width = Math.max(100, newWidth) + 'px';
+            };
+
+            const onUp = () => {
+                handle.classList.remove('active');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            };
+
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+    },
+
+    // Comment 열 리사이즈: #열(2번째 td/th) 드래그
+    initColResize() {
+        const table = document.getElementById('ladder-table');
+        const col = document.querySelector('#ladder-table colgroup col:first-child');
+        if (!table || !col) return;
+
+        let startX, startWidth, dragging = false;
+
+        table.addEventListener('mousedown', (e) => {
+            const td = e.target.closest('td, th');
+            if (!td) return;
+            const tr = td.closest('tr');
+            if (!tr) return;
+            const cells = Array.from(tr.children);
+            if (cells.indexOf(td) !== 1) return;
+
+            e.preventDefault();
+            dragging = true;
+            startX = e.clientX;
+            startWidth = parseInt(col.style.width) || 150;
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!dragging) return;
+            const diff = e.clientX - startX;
+            col.style.width = Math.max(80, startWidth + diff) + 'px';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (!dragging) return;
+            dragging = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        });
+    },
+
+    // === # 열 자동 너비 ===
+
+    updateLineNumWidth() {
+        const maxNum = this.rungCount - 1;
+        const digits = String(maxNum).length;
+        const width = Math.max(20, digits * 10 + 10);
+        const col = document.querySelector('#ladder-table colgroup col:nth-child(2)');
+        if (col) col.style.width = width + 'px';
+    },
+
+    // === Run/Stop ===
+
+    save() {
+        // TODO: 저장 기능 구현
+        alert('Save 기능은 아직 구현되지 않았습니다.');
+    },
+
+    load() {
+        // TODO: 로드 기능 구현
+        alert('Load 기능은 아직 구현되지 않았습니다.');
+    },
+
+    toggleRun() {
+        this.running = !this.running;
+        const btn = document.getElementById('btn-run');
+        if (this.running) {
+            btn.textContent = 'Stop';
+            btn.className = 'toolbar-btn btn-stop';
+        } else {
+            btn.textContent = 'Run';
+            btn.className = 'toolbar-btn btn-run';
         }
     }
 };

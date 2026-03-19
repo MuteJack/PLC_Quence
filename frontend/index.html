@@ -10,6 +10,9 @@
     <!-- 상단 옵션바 -->
     <header id="toolbar">
         <span class="toolbar-title">PLC Simulator</span>
+        <button id="btn-run" class="toolbar-btn btn-run" onclick="Ladder.toggleRun()">Run</button>
+        <button id="btn-save" class="toolbar-btn btn-save" onclick="Ladder.save()">Save</button>
+        <button id="btn-load" class="toolbar-btn btn-load" onclick="Ladder.load()">Load</button>
     </header>
 
     <!-- 메인 영역 (3열) -->
@@ -78,6 +81,8 @@
             </div>
         </main>
 
+        <div class="resize-handle" id="resize-right"></div>
+
         <!-- 오른쪽: Variable Monitor -->
         <aside id="panel-monitor">
             <div class="panel-header">Variable Monitor</div>
@@ -87,8 +92,8 @@
                         <tr>
                             <th>Variable</th>
                             <th>Type</th>
-                            <th>Description</th>
                             <th>Value</th>
+                            <th>Description</th>
                         </tr>
                     </thead>
                     <tbody id="var-tbody"></tbody>

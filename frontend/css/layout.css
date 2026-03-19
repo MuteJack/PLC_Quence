@@ -29,6 +29,49 @@ html, body {
     font-size: 15px;
 }
 
+.toolbar-btn {
+    margin-left: 16px;
+    padding: 4px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #fff;
+}
+
+.btn-run {
+    background: #22aa22;
+}
+
+.btn-run:hover {
+    background: #1a8a1a;
+}
+
+.btn-stop {
+    background: #cc2222;
+}
+
+.btn-stop:hover {
+    background: #aa1a1a;
+}
+
+.btn-save {
+    background: #2266cc;
+}
+
+.btn-save:hover {
+    background: #1a55aa;
+}
+
+.btn-load {
+    background: #666;
+}
+
+.btn-load:hover {
+    background: #555;
+}
+
 /* 메인 3열 레이아웃 */
 #main {
     display: flex;
@@ -38,10 +81,29 @@ html, body {
 /* 왼쪽 패널: Components */
 #panel-components {
     width: 200px;
-    min-width: 150px;
+    min-width: 100px;
     border-right: 1px solid #000;
     display: flex;
     flex-direction: column;
+}
+
+/* 리사이즈 핸들 */
+.resize-handle {
+    width: 4px;
+    cursor: col-resize;
+    background: transparent;
+    flex-shrink: 0;
+}
+
+.resize-handle:hover,
+.resize-handle.active {
+    background: #0066ff;
+}
+
+/* Load 경계(#열)에서 드래그로 Comment 너비 조절 */
+#ladder-table td:nth-child(2),
+#ladder-table th:nth-child(2) {
+    cursor: col-resize;
 }
 
 /* 가운데: 래더 에디터 */
@@ -55,7 +117,7 @@ html, body {
 /* 오른쪽 패널: Variable Monitor */
 #panel-monitor {
     width: 250px;
-    min-width: 180px;
+    min-width: 100px;
     border-left: 1px solid #000;
     display: flex;
     flex-direction: column;
