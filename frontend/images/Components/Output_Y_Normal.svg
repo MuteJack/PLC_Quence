@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="_레이어_1" data-name="레이어 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: none;
+        stroke: #000;
+        stroke-miterlimit: 10;
+      }
+
+      .cls-2 {
+        font-family: MalgunGothicBold, 'Malgun Gothic';
+        font-size: 20px;
+      }
+    </style>
+  </defs>
+  <line class="cls-1" x1="30" y1="25" y2="25"/>
+  <line class="cls-1" x1="70" y1="25" x2="100" y2="25"/>
+  <path class="cls-1" d="M36,10c-3.31,0-6,6.72-6,15s2.69,15,6,15"/>
+  <path class="cls-1" d="M64,40c3.31,0,6-6.72,6-15,0-8.28-2.69-15-6-15"/>
+  <text class="cls-2" transform="translate(43.94 31.45)"><tspan x="0" y="0">Y</tspan></text>
+</svg>
