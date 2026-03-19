@@ -87,7 +87,8 @@ html, body {
 
 #ladder-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     table-layout: fixed;
 }
 
@@ -100,9 +101,19 @@ html, body {
 
 #ladder-table th,
 #ladder-table td {
-    border: 1px solid #000;
+    border-right: 1px solid #000;
+    border-bottom: 1px solid #000;
     text-align: center;
     vertical-align: middle;
+}
+
+#ladder-table th:first-child,
+#ladder-table td:first-child {
+    border-left: 1px solid #000;
+}
+
+#ladder-table thead tr:first-child th {
+    border-top: 1px solid #000;
 }
 
 #ladder-table th {
