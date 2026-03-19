@@ -127,12 +127,44 @@ html, body {
 .col-linenum  { width: 20px; }
 
 /* 렁 행 */
-.rung-row td {
-    height: 120px;
-}
 
 /* COM 열 */
 .col-com { width: 40px; }
+
+/* Step 셀 3단 구조 */
+.step-cell {
+    display: flex;
+    flex-direction: column;
+    height: 120px;
+}
+
+.step-name {
+    height: 35px;
+    border-bottom: 1px solid #ccc;
+}
+
+.step-symbol {
+    height: 50px;
+    border-bottom: 1px solid #ccc;
+}
+
+.step-comment {
+    height: 35px;
+}
+
+.rung-row td {
+    padding: 0;
+}
+
+/* Rung 선택 */
+.rung-selected td {
+    background: #e0e8ff;
+}
+
+/* #열 커서 */
+.rung-row:not(.rung-add) td:nth-child(2) {
+    cursor: pointer;
+}
 
 /* Add Rung 행: 회색 구분선 */
 .rung-add td {
