@@ -122,6 +122,44 @@ def load_and_generate(csv_text: str) -> dict | None:
         return None
 
 
-if __name__ == '__main__':
+def run_server():
+    """백엔드 서버만 실행 (브라우저에서 접속)"""
     import uvicorn
     uvicorn.run(app, host='0.0.0.0', port=8000)
+
+
+def run_app():
+    """PyWebView 창 + 백엔드 서버 실행"""
+    import threading
+    import webview
+
+    # 백엔드 서버를 별도 스레드에서 실행
+    server_thread = threading.Thread(target=run_server, daemon=True)
+    server_thread.start()
+
+    # 서버 시작 대기
+    import time
+    import urllib.request
+    for _ in range(30):
+        try:
+            urllib.request.urlopen('http://localhost:8000/')
+            break
+        except Exception:
+            time.sleep(0.5)
+
+    # PyWebView 창 열기
+    webview.create_window(
+        'PLC Simulator',
+        'http://localhost:8000/',
+        width=1400,
+        height=800,
+    )
+    webview.start()
+
+
+if __name__ == '__main__':
+    import sys
+    if '--server' in sys.argv:
+        run_server()
+    else:
+        run_app()
