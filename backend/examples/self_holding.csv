@@ -1,0 +1,17 @@
+[meta]
+key,value
+version,1.0
+stepCount,12
+outputCol,11
+savedAt,2026-03-19T23:35:23.622Z
+
+[ladder]
+rung,type,comment,s0,v0,s1,v1,s2,v2,s3,v3,s4,v4,s5,v5,s6,v6,s7,v7,s8,v8,s9,v9,s10,v10,s11
+0,main,모터 자기유지,line,d,contact_a:X0,d,contact_b:X1,,line,,line,,line,,line,,line,,line,,line,,line,,output:Y0
+0,branch,,line,u,contact_a:Y0,u,,,,,,,,,,,,,,,,,,,
+
+[variables]
+name,comment
+X0,시작버튼
+X1,정지버튼
+Y0,모터

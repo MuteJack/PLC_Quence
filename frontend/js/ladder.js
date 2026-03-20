@@ -7,6 +7,8 @@ const Ladder = {
     selectedStep: null,
     selectedVertical: null,
     running: false,
+    ws: null,
+    lastIOState: {},
 
     // 컴포넌트 계열 분류
     COMP_FAMILY: {
@@ -53,8 +55,9 @@ const Ladder = {
     init() {
         document.querySelector('.btn-add-rung').addEventListener('click', () => this.addRung());
 
-        // 더블클릭 → Comment 편집
+        // 더블클릭 → Comment 편집 (Run 중 비활성)
         document.querySelector('#ladder-table tbody').addEventListener('dblclick', (e) => {
+            if (this.running) return;
             // Rung Comment 열
             const td = e.target.closest('td');
             if (td) {
@@ -145,6 +148,23 @@ const Ladder = {
 
         // 클릭 이벤트
         document.querySelector('#ladder-table tbody').addEventListener('click', (e) => {
+            // Run 상태: X 접점 클릭만 허용
+            if (this.running) {
+                const symbolCenter = e.target.closest('.step-symbol-center');
+                if (symbolCenter) {
+                    const symbolDiv = symbolCenter.closest('.step-symbol');
+                    const comp = symbolDiv ? symbolDiv.dataset.component : '';
+                    if (comp && comp.startsWith('PB_')) {
+                        const nameDiv = symbolDiv.closest('.step-cell').querySelector('.step-name');
+                        const varName = nameDiv ? nameDiv.textContent.trim() : '';
+                        if (varName && varName.startsWith('X')) {
+                            this.toggleInput(varName);
+                        }
+                    }
+                }
+                return;
+            }
+
             if (this.selectedComponent) {
                 const type = this.selectedComponent.dataset.type;
 
@@ -909,7 +929,8 @@ const Ladder = {
             const cls = colorMap[prefix] || '';
             const type = typeMap[prefix] || '?';
             const desc = this.variableComments[name] || '';
-            return `<tr class="${cls}"><td>${name}</td><td>${type}</td><td>-</td><td>${desc}</td></tr>`;
+            const clickable = prefix === 'X' ? ' class="var-clickable" onclick="Ladder.toggleInput(\'' + name + '\')"' : '';
+            return `<tr class="${cls}"${clickable}><td>${name}</td><td>${type}</td><td>-</td><td>${desc}</td></tr>`;
         }).join('');
     },
 
@@ -1720,15 +1741,406 @@ const Ladder = {
     },
 
     toggleRun() {
-        this.running = !this.running;
-        const btn = document.getElementById('btn-run');
         if (this.running) {
+            this.stopRun();
+        } else {
+            this.startRun();
+        }
+    },
+
+    startRun() {
+        const csv = this.exportCSV();
+
+        // WebSocket 연결
+        const wsUrl = `ws://${location.hostname}:8000/ws`;
+        this.ws = new WebSocket(wsUrl);
+
+        this.ws.onopen = () => {
+            this.running = true;
+            document.body.classList.add('running-mode');
+            const btn = document.getElementById('btn-run');
             btn.textContent = 'Stop';
             btn.className = 'toolbar-btn btn-stop';
-        } else {
+
+            // CSV 전송하여 실행 시작
+            this.ws.send(JSON.stringify({
+                action: 'run',
+                csv: csv
+            }));
+        };
+
+        this.ws.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+
+            if (data.type === 'io_state') {
+                this.updateIOState(data.io, data.scan_count);
+            } else if (data.type === 'code_generated') {
+                console.log('Generated code:', data.code);
+            } else if (data.type === 'stopped') {
+                console.log('PLC stopped');
+            }
+        };
+
+        this.ws.onclose = () => {
+            this.running = false;
+            document.body.classList.remove('running-mode');
+            const btn = document.getElementById('btn-run');
             btn.textContent = 'Run';
             btn.className = 'toolbar-btn btn-run';
+        };
+
+        this.ws.onerror = (err) => {
+            console.error('WebSocket error:', err);
+            alert('Error: 백엔드 서버에 연결할 수 없습니다.\n\npython main.py로 서버를 시작해주세요.');
+            this.running = false;
+            document.body.classList.remove('running-mode');
+            const btn = document.getElementById('btn-run');
+            btn.textContent = 'Run';
+            btn.className = 'toolbar-btn btn-run';
+        };
+    },
+
+    stopRun() {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({ action: 'stop' }));
+            this.ws.close();
         }
+        this.running = false;
+        document.body.classList.remove('running-mode');
+        const btn = document.getElementById('btn-run');
+        btn.textContent = 'Run';
+        btn.className = 'toolbar-btn btn-run';
+        this.resetLadderImages();
+    },
+
+    resetLadderImages() {
+        document.querySelectorAll('#ladder-table tbody .step-cell').forEach(cell => {
+            const symbol = cell.querySelector('.step-symbol');
+            const back = cell.querySelector('.step-symbol-back');
+            if (!symbol || !back) return;
+
+            // 통전 상태 초기화
+            delete cell.dataset.energized;
+
+            const comp = symbol.dataset.component;
+
+            // Line: 이미지 제거하고 CSS 배경 복원
+            if (!comp) {
+                back.innerHTML = '';
+                back.style.background = '';
+                return;
+            }
+            if (comp === 'Line') {
+                back.innerHTML = '<img src="images/Components/Line_Normal.svg">';
+                back.style.background = 'none';
+                return;
+            }
+
+            if (comp === 'Output_Basic') {
+                back.innerHTML = '<img src="images/Components/Output_Basic_Normal.svg">';
+                return;
+            }
+
+            const imgSrc = `images/Components/${comp}_Normal.svg`;
+            back.innerHTML = `<img src="${imgSrc}">`;
+        });
+
+        // Vertical line 색상 초기화
+        document.querySelectorAll('#ladder-table tbody .vertical-line').forEach(vline => {
+            vline.style.background = '#000';
+        });
+    },
+
+    // I/O 상태를 Variable Monitor에 반영
+    updateIOState(ioState) {
+        this.lastIOState = ioState;
+        const tbody = document.getElementById('var-tbody');
+        if (!tbody) return;
+
+        // Value 열 업데이트
+        const rows = tbody.querySelectorAll('tr');
+        rows.forEach(row => {
+            const varName = row.children[0] ? row.children[0].textContent : '';
+            const valueCell = row.children[2]; // Value는 3번째 열
+            if (valueCell && varName in ioState) {
+                const val = ioState[varName];
+                valueCell.textContent = val ? 'ON' : 'OFF';
+                valueCell.style.color = val ? '#22aa22' : '#cc2222';
+                valueCell.style.fontWeight = '600';
+            }
+        });
+
+        // 통전 상태 계산 후 이미지 업데이트
+        this.calculateEnergized(ioState);
+
+
+        this.updateLadderImages(ioState);
+    },
+
+    // 컴포넌트 상태에 따라 이미지를 변경하는 규칙 (val=변수값, e=통전여부)
+    COMP_STATE_SUFFIX: {
+        // A접점(NO): 변수ON+통전 → Connected, 변수ON → Operated, 그 외 → Normal
+        'PB_A': (val, e) => (val && e) ? 'Connected' : val ? 'Operated' : 'Normal',
+        'Contact_Memory_A': (val, e) => (val && e) ? 'Connected' : val ? 'Operated' : 'Normal',
+        'Contact_Timer_A': (val, e) => (val && e) ? 'Connected' : val ? 'Operated' : 'Normal',
+        'Contact_Y_A': (val, e) => (val && e) ? 'Connected' : val ? 'Operated' : 'Normal',
+        // B접점(NC): 변수OFF+통전 → Connected, 변수ON → Operated, 그 외 → Normal
+        'PB_B': (val, e) => (!val && e) ? 'Connected' : val ? 'Operated' : 'Normal',
+        'Contact_Memory_B': (val, e) => (!val && e) ? 'Connected' : val ? 'Operated' : 'Normal',
+        'Contact_Timer_B': (val, e) => (!val && e) ? 'Connected' : val ? 'Operated' : 'Normal',
+        'Contact_Y_B': (val, e) => (!val && e) ? 'Connected' : val ? 'Operated' : 'Normal',
+        // 출력: 변수 ON → Connected, OFF → Normal
+        'Output_Y': (val) => val ? 'Connected' : 'Normal',
+        'Output_Timer': (val) => val ? 'Connected' : 'Normal',
+        'Function_Memory': (val) => val ? 'Connected' : 'Normal',
+    },
+
+    // 각 셀의 통전 상태 계산
+    calculateEnergized(ioState) {
+        const tbody = document.querySelector('#ladder-table tbody');
+        const allRows = tbody.querySelectorAll('.rung-row:not(.rung-add)');
+
+        // 렁 단위로 그룹화 (main + branches)
+        const rungGroups = [];
+        let currentGroup = null;
+
+        allRows.forEach(row => {
+            if (!row.classList.contains('rung-branch')) {
+                currentGroup = { main: row, branches: [] };
+                rungGroups.push(currentGroup);
+            } else if (currentGroup) {
+                currentGroup.branches.push(row);
+            }
+        });
+
+        // 각 렁 그룹에 대해 통전 계산
+        rungGroups.forEach(group => {
+            const mainCells = Array.from(group.main.children).slice(2, 2 + this.stepCount);
+
+            // v-down 위치 수집 (main row)
+            const vdownCols = new Set();
+            mainCells.forEach((td, i) => {
+                const cell = td.querySelector('.step-cell');
+                if (cell && cell.querySelector('.vertical-line.v-down')) {
+                    vdownCols.add(i);
+                }
+            });
+
+            // branch의 v-up 위치 수집
+            const vupCols = new Set();
+            group.branches.forEach(branchRow => {
+                const branchCells = Array.from(branchRow.children).slice(2, 2 + this.stepCount);
+                branchCells.forEach((td, i) => {
+                    const cell = td.querySelector('.step-cell');
+                    if (cell && cell.querySelector('.vertical-line.v-up')) {
+                        vupCols.add(i);
+                    }
+                });
+            });
+
+            // main row 통전 계산
+            const mainEnergized = this._calcRowEnergized(mainCells, ioState);
+
+            // branch rows 통전 계산
+            const branchEnergizedArrays = group.branches.map(branchRow => {
+                const branchCells = Array.from(branchRow.children).slice(2, 2 + this.stepCount);
+
+                // branch 시작점: v-up 위치의 main 통전 상태를 전달
+                const branchEnergized = this._calcBranchEnergized(branchCells, ioState, mainEnergized);
+                return branchEnergized;
+            });
+
+            // 합류: 각 branch의 마지막 v-up 위치에서 main과 OR
+            branchEnergizedArrays.forEach((be, bi) => {
+                const branchRow = group.branches[bi];
+                const branchCells = Array.from(branchRow.children).slice(2, 2 + this.stepCount);
+
+                // 이 branch의 마지막 v-up 위치 찾기 (합류점)
+                let mergeCol = -1;
+                for (let i = branchCells.length - 1; i >= 0; i--) {
+                    const cell = branchCells[i].querySelector('.step-cell');
+                    if (cell && cell.querySelector('.vertical-line.v-up')) {
+                        mergeCol = i;
+                        break;
+                    }
+                }
+
+                if (mergeCol >= 0) {
+                    const branchResult = be[mergeCol];
+                    const merged = mainEnergized[mergeCol] || branchResult;
+
+                    if (merged !== mainEnergized[mergeCol]) {
+                        mainEnergized[mergeCol] = merged;
+                        // 합류점 이후 재계산
+                        for (let i = mergeCol + 1; i < this.stepCount; i++) {
+                            mainEnergized[i] = this._evalCellEnergized(mainCells[i], ioState, mainEnergized[i - 1]);
+                        }
+                    }
+                }
+            });
+
+            // 결과를 data-energized에 저장
+            mainCells.forEach((td, i) => {
+                const cell = td.querySelector('.step-cell');
+                if (cell) cell.dataset.energized = mainEnergized[i] ? 'true' : 'false';
+            });
+
+            group.branches.forEach((branchRow, bi) => {
+                const branchCells = Array.from(branchRow.children).slice(2, 2 + this.stepCount);
+                const be = branchEnergizedArrays[bi] || [];
+                branchCells.forEach((td, i) => {
+                    const cell = td.querySelector('.step-cell');
+                    if (cell) cell.dataset.energized = be[i] ? 'true' : 'false';
+                });
+            });
+        });
+    },
+
+    _evalCellEnergized(td, ioState, prevEnergized) {
+        if (!td) return false;
+        const symbol = td.querySelector('.step-symbol');
+        const nameDiv = td.querySelector('.step-name');
+        const comp = symbol ? symbol.dataset.component : '';
+        const varName = nameDiv ? nameDiv.textContent.trim() : '';
+
+        if (!comp || comp === 'Line' || comp === 'Output_Basic') {
+            return prevEnergized;
+        }
+
+        const family = this.COMP_FAMILY[comp];
+        if (family === 'contact_a') {
+            return prevEnergized && (varName in ioState ? ioState[varName] : false);
+        } else if (family === 'contact_b') {
+            return prevEnergized && (varName in ioState ? !ioState[varName] : true);
+        } else if (family === 'output') {
+            return prevEnergized;
+        }
+
+        return prevEnergized;
+    },
+
+    _calcRowEnergized(cells, ioState) {
+        const energized = [];
+        let prev = true; // Load 선에서 시작
+
+        for (let i = 0; i < cells.length; i++) {
+            prev = this._evalCellEnergized(cells[i], ioState, prev);
+            energized.push(prev);
+        }
+
+        return energized;
+    },
+
+    _calcBranchEnergized(branchCells, ioState, mainEnergized) {
+        const energized = [];
+        let prev = false;
+        let inBranch = false; // v-up 사이에서만 통전 계산
+
+        // v-up 위치 수집
+        const vupPositions = [];
+        for (let i = 0; i < branchCells.length; i++) {
+            const cell = branchCells[i].querySelector('.step-cell');
+            if (cell && cell.querySelector('.vertical-line.v-up')) {
+                vupPositions.push(i);
+            }
+        }
+
+        // 첫 번째 v-up = 분기 시작, 마지막 v-up = 합류
+        const startCol = vupPositions.length > 0 ? vupPositions[0] : -1;
+        const endCol = vupPositions.length > 1 ? vupPositions[vupPositions.length - 1] : startCol;
+
+        for (let i = 0; i < branchCells.length; i++) {
+            if (i === startCol) {
+                // 분기 시작: main의 같은 위치 통전 상태를 받음
+                prev = mainEnergized[i];
+                inBranch = true;
+            }
+
+            if (inBranch) {
+                prev = this._evalCellEnergized(branchCells[i], ioState, prev);
+            } else {
+                prev = false;
+            }
+
+            energized.push(prev);
+
+            if (i === endCol && inBranch) {
+                inBranch = false; // 합류 이후는 통전 계산 중단
+            }
+        }
+
+        return energized;
+    },
+
+    updateLadderImages(ioState) {
+        document.querySelectorAll('#ladder-table tbody .step-cell').forEach(cell => {
+            const symbol = cell.querySelector('.step-symbol');
+            const nameDiv = cell.querySelector('.step-name');
+            const back = cell.querySelector('.step-symbol-back');
+            if (!symbol || !back) return;
+
+            const comp = symbol.dataset.component;
+            const varName = nameDiv ? nameDiv.textContent.trim() : '';
+            const isEnergized = cell.dataset.energized === 'true';
+
+            // Line: 통전 상태에 따라 Normal/Connected
+            if (!comp || comp === 'Line') {
+                const isBranchCell = cell.classList.contains('branch-cell');
+                if (isBranchCell && !isEnergized) {
+                    back.innerHTML = '';
+                    back.style.background = 'none';
+                } else {
+                    const lineSuffix = isEnergized ? 'Connected' : 'Normal';
+                    const lineSrc = `images/Components/Line_${lineSuffix}.svg`;
+                    const img = back.querySelector('img');
+                    if (img && img.src.endsWith(lineSrc)) return;
+                    back.innerHTML = `<img src="${lineSrc}">`;
+                    back.style.background = 'none';
+                }
+                return;
+            }
+
+            // Output_Basic: 통전 상태에 따라 변경
+            if (comp === 'Output_Basic') {
+                const suffix = isEnergized ? 'Connected' : 'Normal';
+                const imgSrc = `images/Components/Output_Basic_${suffix}.svg`;
+                const img = back.querySelector('img');
+                if (img && img.src.endsWith(imgSrc)) return;
+                back.innerHTML = `<img src="${imgSrc}">`;
+                return;
+            }
+
+            // 컴포넌트: 변수 상태에 따라 이미지 변경
+            if (!varName || !(varName in ioState)) return;
+
+            const stateFunc = this.COMP_STATE_SUFFIX[comp];
+            if (!stateFunc) return;
+
+            const suffix = stateFunc(ioState[varName], isEnergized);
+            const imgSrc = `images/Components/${comp}_${suffix}.svg`;
+            const img = back.querySelector('img');
+            if (img && img.src.endsWith(imgSrc)) return;
+            back.innerHTML = `<img src="${imgSrc}">`;
+        });
+
+        // Vertical line 통전 상태
+        document.querySelectorAll('#ladder-table tbody .vertical-line').forEach(vline => {
+            const cell = vline.closest('.step-cell');
+            const isEnergized = cell && cell.dataset.energized === 'true';
+            vline.style.background = isEnergized ? '#0000ff' : '#000';
+        });
+    },
+
+    // X 변수 입력 토글 (클릭으로 ON/OFF)
+    toggleInput(varName) {
+        if (!this.running || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        if (!varName.startsWith('X')) return;
+
+        this.ws.send(JSON.stringify({
+            action: 'set_input',
+            var: varName,
+            value: !this.lastIOState[varName]
+        }));
     }
 };
 

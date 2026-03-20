@@ -72,6 +72,44 @@ html, body {
     background: #555;
 }
 
+/* Run 상태: 편집 비활성 (X 접점 클릭은 JS에서 허용) */
+body.running-mode #ladder-table tbody {
+    opacity: 0.8;
+}
+
+body.running-mode #panel-components {
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+body.running-mode .btn-add-rung {
+    display: none;
+}
+
+body.running-mode .btn-save,
+body.running-mode .btn-load {
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+/* Run 상태에서 Variable Monitor는 클릭 가능 (X 입력 토글) */
+body.running-mode #panel-monitor {
+    pointer-events: auto;
+}
+
+/* Run 상태에서 X 접점 클릭 가능 표시 */
+body.running-mode .step-symbol-center {
+    cursor: default;
+}
+
+body.running-mode [data-component^="PB_"] .step-symbol-center {
+    cursor: pointer;
+}
+
+body.running-mode [data-component^="PB_"] .step-symbol-center:hover {
+    background: rgba(255, 200, 0, 0.2);
+}
+
 /* 메인 3열 레이아웃 */
 #main {
     display: flex;
@@ -515,3 +553,11 @@ html, body {
 #var-table .var-y { color: #cc0000; }
 #var-table .var-m { color: #0000cc; }
 #var-table .var-t { color: #cc6600; }
+
+#var-table .var-clickable {
+    cursor: pointer;
+}
+
+#var-table .var-clickable:hover {
+    background: #e8ffe8;
+}
