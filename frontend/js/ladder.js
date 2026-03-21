@@ -3,9 +3,12 @@ const Ladder = {
     stepCount: 12,
     outputCol: 11,
     selectedRow: null,
+    selectedRows: [],       // 다중 rung/branch 선택
     selectedComponent: null,
     selectedStep: null,
+    selectedSteps: [],      // 다중 step 선택
     selectedVertical: null,
+    clipboard: null,        // 복사 데이터 {type: 'steps'|'rows', data: [...]}
     running: false,
     ws: null,
     lastIOState: {},
@@ -207,12 +210,12 @@ const Ladder = {
                 }
             }
 
-            // 컴포넌트 미선택: center 클릭 → step 선택
+            // 컴포넌트 미선택: center 클릭 → step 선택 (빈 셀도 가능)
             const symbolCenter = e.target.closest('.step-symbol-center');
             if (symbolCenter) {
                 const symbolDiv = symbolCenter.closest('.step-symbol');
-                if (symbolDiv.dataset.component && symbolDiv.dataset.component !== 'Output_Basic') {
-                    this.selectStep(symbolDiv);
+                if (symbolDiv.dataset.component !== 'Output_Basic') {
+                    this.selectStep(symbolDiv, e.ctrlKey || e.metaKey);
                     return;
                 }
             }
@@ -237,7 +240,7 @@ const Ladder = {
 
             const cells = Array.from(tr.children);
             if (cells.indexOf(td) === 1) {
-                this.selectRung(tr);
+                this.selectRung(tr, e.ctrlKey || e.metaKey);
             }
         });
 
@@ -249,8 +252,21 @@ const Ladder = {
             if (e.key === 'Delete') {
                 if (this.selectedVertical) {
                     this.deleteVerticalLine();
+                } else if (this.selectedSteps.length > 0) {
+                    // 다중 선택 시 모두 삭제
+                    this.selectedSteps.forEach(s => {
+                        this.selectedStep = s;
+                        this.deleteStep();
+                    });
+                    this.selectedSteps = [];
                 } else if (this.selectedStep) {
                     this.deleteStep();
+                } else if (this.selectedRows.length > 0) {
+                    this.selectedRows.slice().reverse().forEach(r => {
+                        this.selectedRow = r;
+                        this.deleteRung();
+                    });
+                    this.selectedRows = [];
                 } else if (this.selectedRow) {
                     this.deleteRung();
                 }
@@ -259,6 +275,15 @@ const Ladder = {
                 this.clearComponentSelection();
                 this.clearStepSelection();
                 this.clearVerticalSelection();
+                this.clearMultiSelection();
+            }
+            // Ctrl+C: 복사
+            if (e.key === 'c' && (e.ctrlKey || e.metaKey)) {
+                this.copySelection();
+            }
+            // Ctrl+V: 붙여넣기
+            if (e.key === 'v' && (e.ctrlKey || e.metaKey)) {
+                this.pasteSelection();
             }
         });
 
@@ -299,20 +324,38 @@ const Ladder = {
 
     // === Step 선택/삭제 ===
 
-    selectStep(symbolDiv) {
-        if (this.selectedStep) {
-            this.selectedStep.classList.remove('step-selected');
+    selectStep(symbolDiv, ctrlKey) {
+        if (ctrlKey) {
+            // Ctrl+Click: 다중 선택 토글
+            if (symbolDiv.classList.contains('step-selected')) {
+                symbolDiv.classList.remove('step-selected');
+                this.selectedSteps = this.selectedSteps.filter(s => s !== symbolDiv);
+                if (this.selectedStep === symbolDiv) {
+                    this.selectedStep = this.selectedSteps.length > 0 ? this.selectedSteps[this.selectedSteps.length - 1] : null;
+                }
+            } else {
+                symbolDiv.classList.add('step-selected');
+                this.selectedSteps.push(symbolDiv);
+                this.selectedStep = symbolDiv;
+            }
+        } else {
+            // 일반 클릭: 단일 선택
+            this.clearMultiSelection();
+            if (this.selectedStep) {
+                this.selectedStep.classList.remove('step-selected');
+            }
+            if (this.selectedStep === symbolDiv) {
+                this.selectedStep = null;
+                return;
+            }
+            if (this.selectedRow) {
+                this.selectedRow.classList.remove('rung-selected');
+                this.selectedRow = null;
+            }
+            symbolDiv.classList.add('step-selected');
+            this.selectedStep = symbolDiv;
+            this.selectedSteps = [symbolDiv];
         }
-        if (this.selectedStep === symbolDiv) {
-            this.selectedStep = null;
-            return;
-        }
-        if (this.selectedRow) {
-            this.selectedRow.classList.remove('rung-selected');
-            this.selectedRow = null;
-        }
-        symbolDiv.classList.add('step-selected');
-        this.selectedStep = symbolDiv;
     },
 
     clearStepSelection() {
@@ -320,6 +363,8 @@ const Ladder = {
             this.selectedStep.classList.remove('step-selected');
             this.selectedStep = null;
         }
+        this.selectedSteps.forEach(s => s.classList.remove('step-selected'));
+        this.selectedSteps = [];
     },
 
     selectVerticalLine(vLine) {
@@ -345,6 +390,263 @@ const Ladder = {
             this.selectedVertical.classList.remove('vertical-selected');
             this.selectedVertical = null;
         }
+    },
+
+    clearMultiSelection() {
+        this.selectedSteps.forEach(s => s.classList.remove('step-selected'));
+        this.selectedSteps = [];
+        this.selectedRows.forEach(r => r.classList.remove('rung-selected'));
+        this.selectedRows = [];
+    },
+
+    // === 셀 데이터 추출/복원 ===
+
+    _extractCellData(td) {
+        const symbolDiv = td.querySelector('.step-symbol');
+        const nameDiv = td.querySelector('.step-name');
+        const commentDiv = td.querySelector('.step-comment');
+        const stepCell = td.querySelector('.step-cell');
+        const comp = symbolDiv ? symbolDiv.dataset.component : null;
+        const varName = nameDiv ? nameDiv.textContent.trim() : '';
+        const comment = commentDiv ? commentDiv.textContent.trim() : '';
+        // vertical lines
+        const vLines = [];
+        if (stepCell) {
+            stepCell.querySelectorAll('.vertical-line').forEach(v => {
+                vLines.push({
+                    side: v.classList.contains('vertical-line-right') ? 'right' : 'left',
+                    dir: v.classList.contains('v-down') ? 'down' : 'up'
+                });
+            });
+        }
+        return { comp, varName, comment, vLines };
+    },
+
+    _extractRowData(tr) {
+        const cells = Array.from(tr.children);
+        const commentTd = cells[0];
+        const rungComment = commentTd ? commentTd.textContent.trim() : '';
+        const isBranch = tr.classList.contains('rung-branch');
+        const stepTds = cells.slice(2, 2 + this.stepCount);
+        const stepsData = stepTds.map(td => this._extractCellData(td));
+        // branch rows
+        const branchRows = [];
+        if (!isBranch) {
+            let next = tr.nextElementSibling;
+            while (next && next.classList.contains('rung-branch')) {
+                branchRows.push(this._extractRowData(next));
+                next = next.nextElementSibling;
+            }
+        }
+        return { rungComment, isBranch, stepsData, branchRows };
+    },
+
+    // === 복사 ===
+
+    copySelection() {
+        if (this.running) return;
+
+        // rung/branch 선택 복사
+        const rows = this.selectedRows.length > 0 ? this.selectedRows : (this.selectedRow ? [this.selectedRow] : []);
+        if (rows.length > 0) {
+            const data = rows.map(tr => this._extractRowData(tr));
+            this.clipboard = { type: 'rows', data };
+            return;
+        }
+
+        // step 선택 복사
+        const steps = this.selectedSteps.length > 0 ? this.selectedSteps : (this.selectedStep ? [this.selectedStep] : []);
+        if (steps.length > 0) {
+            const data = steps.map(s => {
+                const td = s.closest('td');
+                return this._extractCellData(td);
+            });
+            this.clipboard = { type: 'steps', data };
+            return;
+        }
+    },
+
+    // === 붙여넣기 ===
+
+    pasteSelection() {
+        if (this.running || !this.clipboard) return;
+
+        if (this.clipboard.type === 'rows') {
+            this._pasteRows();
+        } else if (this.clipboard.type === 'steps') {
+            this._pasteSteps();
+        }
+    },
+
+    _pasteRows() {
+        const tbody = document.querySelector('#ladder-table tbody');
+        const addRow = tbody.querySelector('.rung-add');
+        // 선택된 행 아래, 또는 마지막에 붙여넣기
+        let insertAfter = this.selectedRow || addRow.previousElementSibling;
+
+        this.clipboard.data.forEach(rowData => {
+            if (rowData.isBranch) return; // branch는 메인과 함께 처리
+
+            // 새 rung 추가
+            const newTr = this._createRungRow();
+            // insertAfter의 branch들 뒤에 삽입
+            let afterEl = insertAfter;
+            while (afterEl.nextElementSibling && afterEl.nextElementSibling.classList.contains('rung-branch')) {
+                afterEl = afterEl.nextElementSibling;
+            }
+            afterEl.after(newTr);
+
+            // 셀 데이터 복원
+            const cells = Array.from(newTr.children);
+            const commentTd = cells[0];
+            commentTd.textContent = rowData.rungComment;
+            const stepTds = cells.slice(2, 2 + this.stepCount);
+
+            rowData.stepsData.forEach((cellData, i) => {
+                if (i >= stepTds.length) return;
+                this._restoreCellData(stepTds[i], cellData, true); // true = duplicate (새 변수명으로)
+            });
+
+            this.setDefaultOutput(newTr);
+
+            // branch rows 복원
+            rowData.branchRows.forEach(brData => {
+                const brTr = this._createBranchRow();
+                newTr.after(brTr);
+                const brCells = Array.from(brTr.children);
+                const brStepTds = brCells.slice(2, 2 + this.stepCount);
+                brData.stepsData.forEach((cellData, i) => {
+                    if (i >= brStepTds.length) return;
+                    this._restoreCellData(brStepTds[i], cellData, true);
+                });
+            });
+
+            insertAfter = newTr;
+            this.rungCount++;
+        });
+
+        this.renumberRungs();
+        this.updateVariableMonitor();
+    },
+
+    _pasteSteps() {
+        // 선택된 step 위치에 붙여넣기, 또는 선택된 step 오른쪽에
+        const targetStep = this.selectedStep;
+        if (!targetStep) return;
+
+        const targetTd = targetStep.closest('td');
+        const targetTr = targetTd.closest('tr');
+        const cells = Array.from(targetTr.children);
+        const stepTds = cells.slice(2, 2 + this.stepCount);
+        let startIdx = stepTds.indexOf(targetTd);
+
+        this.clipboard.data.forEach((cellData, i) => {
+            const idx = startIdx + i;
+            if (idx >= this.outputCol) return; // output 열은 건너뜀
+            const td = stepTds[idx];
+            if (!td) return;
+            this._restoreCellData(td, cellData, true);
+        });
+
+        this.updateVariableMonitor();
+    },
+
+    _restoreCellData(td, cellData, duplicate) {
+        const symbolDiv = td.querySelector('.step-symbol');
+        const nameDiv = td.querySelector('.step-name');
+        const back = td.querySelector('.step-symbol-back');
+
+        if (!cellData.comp || cellData.comp === 'Output_Basic') return;
+
+        // 컴포넌트 배치
+        const imgName = cellData.comp + '_Normal';
+        back.innerHTML = `<img src="images/Components/${imgName}.svg">`;
+        symbolDiv.dataset.component = cellData.comp;
+
+        // 변수명 (duplicate 시 충돌 방지)
+        if (cellData.varName && !duplicate) {
+            nameDiv.textContent = cellData.varName;
+        } else if (cellData.varName && duplicate) {
+            // 접점은 같은 변수명 허용, 출력은 새 변수명 필요
+            const family = this.COMP_FAMILY[cellData.comp] || '';
+            if (family.startsWith('contact') || family === 'contact_a' || family === 'contact_b') {
+                nameDiv.textContent = cellData.varName;
+            } else {
+                // 출력 계열: 중복이면 변수명 비우기
+                const existing = document.querySelectorAll('.step-name');
+                const used = Array.from(existing).map(n => n.textContent.trim()).filter(Boolean);
+                if (used.includes(cellData.varName)) {
+                    nameDiv.textContent = '';
+                } else {
+                    nameDiv.textContent = cellData.varName;
+                }
+            }
+        }
+
+        // 변수 등록
+        if (nameDiv.textContent.trim()) {
+            this.registerVariable(nameDiv.textContent.trim(), cellData.comp);
+        }
+
+        // 코멘트는 변수 기반으로 자동 반영됨
+    },
+
+    _createRungRow() {
+        const tr = document.createElement('tr');
+        tr.classList.add('rung-row');
+        // Comment 열
+        const commentTd = document.createElement('td');
+        commentTd.classList.add('rung-comment');
+        tr.appendChild(commentTd);
+        // # 열
+        const numTd = document.createElement('td');
+        numTd.classList.add('rung-num');
+        tr.appendChild(numTd);
+        // Step 열
+        for (let i = 0; i < this.stepCount; i++) {
+            const td = document.createElement('td');
+            td.innerHTML = this._createStepCellHTML(i);
+            tr.appendChild(td);
+        }
+        return tr;
+    },
+
+    _createBranchRow() {
+        const tr = document.createElement('tr');
+        tr.classList.add('rung-row', 'rung-branch');
+        // Comment 열
+        const commentTd = document.createElement('td');
+        commentTd.classList.add('rung-comment');
+        tr.appendChild(commentTd);
+        // # 열
+        const numTd = document.createElement('td');
+        numTd.classList.add('rung-num');
+        tr.appendChild(numTd);
+        // Step 열 (branch는 Line 배경 없음)
+        for (let i = 0; i < this.stepCount; i++) {
+            const td = document.createElement('td');
+            td.innerHTML = this._createStepCellHTML(i, true);
+            tr.appendChild(td);
+        }
+        return tr;
+    },
+
+    _createStepCellHTML(colIdx, isBranch) {
+        const isOutputCol = colIdx === this.outputCol;
+        const rightZone = isOutputCol ? '' : `<div class="step-symbol-right" data-side="right"></div>`;
+        const bgClass = isBranch ? 'branch-cell' : '';
+        return `<div class="step-cell ${bgClass}">
+            <div class="step-name"></div>
+            <div class="step-symbol" style="position:relative;">
+                <div class="step-symbol-back"></div>
+                <div class="step-symbol-fore">
+                    <div class="step-symbol-left" data-side="left"></div>
+                    <div class="step-symbol-center"></div>
+                    ${rightZone}
+                </div>
+            </div>
+            <div class="step-comment"></div>
+        </div>`;
     },
 
     deleteVerticalLine() {
@@ -1267,16 +1569,34 @@ const Ladder = {
 
     // === Rung 선택/삭제/추가 ===
 
-    selectRung(tr) {
-        if (this.selectedRow) {
-            this.selectedRow.classList.remove('rung-selected');
+    selectRung(tr, ctrlKey) {
+        if (ctrlKey) {
+            // Ctrl+Click: 다중 선택 토글
+            if (tr.classList.contains('rung-selected')) {
+                tr.classList.remove('rung-selected');
+                this.selectedRows = this.selectedRows.filter(r => r !== tr);
+                if (this.selectedRow === tr) {
+                    this.selectedRow = this.selectedRows.length > 0 ? this.selectedRows[this.selectedRows.length - 1] : null;
+                }
+            } else {
+                tr.classList.add('rung-selected');
+                this.selectedRows.push(tr);
+                this.selectedRow = tr;
+            }
+        } else {
+            // 일반 클릭: 단일 선택
+            this.clearMultiSelection();
+            if (this.selectedRow) {
+                this.selectedRow.classList.remove('rung-selected');
+            }
+            if (this.selectedRow === tr) {
+                this.selectedRow = null;
+                return;
+            }
+            tr.classList.add('rung-selected');
+            this.selectedRow = tr;
+            this.selectedRows = [tr];
         }
-        if (this.selectedRow === tr) {
-            this.selectedRow = null;
-            return;
-        }
-        tr.classList.add('rung-selected');
-        this.selectedRow = tr;
     },
 
     deleteRung() {

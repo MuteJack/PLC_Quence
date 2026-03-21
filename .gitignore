@@ -1,6 +1,19 @@
+# IDE
+.vscode
+
+# Hidden Files (start with .)
 /.*/*
 /.*
 !.gitignore
 
-*.pyc
+# Build
+/build/*
+/dist/*
+main.spec
+
+# Python Environments/Cache
 /.venv
+*/__pycache__/*
+*.pyc
+
+
