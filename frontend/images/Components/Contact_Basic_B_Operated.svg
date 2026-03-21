@@ -12,19 +12,28 @@
       }
 
       .cls-2 {
-        fill: #fff;
         stroke: #fff;
       }
 
-      .cls-3 {
+      .cls-2, .cls-3 {
+        fill: #fff;
+      }
+
+      .cls-4 {
         fill: blue;
+      }
+
+      .cls-3 {
+        font-family: MalgunGothicBold, 'Malgun Gothic';
+        font-size: 20px;
       }
     </style>
   </defs>
-  <rect class="cls-3" x="35.4" y="10" width="30" height="30"/>
+  <rect class="cls-4" x="35.4" y="10" width="30" height="30"/>
   <line class="cls-1" x1="30" y1="10" x2="30" y2="40"/>
   <line class="cls-1" x1="70" y1="10" x2="70" y2="40"/>
   <line class="cls-1" x1="30" y1="25" x2="0" y2="25"/>
   <line class="cls-1" x1="70" y1="25" x2="100" y2="25"/>
   <line class="cls-2" x1="35.4" y1="40" x2="64.6" y2="10.81"/>
+  <text class="cls-3" transform="translate(43.94 32.5)"><tspan x="0" y="0">Y</tspan></text>
 </svg>

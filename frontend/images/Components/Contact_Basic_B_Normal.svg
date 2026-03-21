@@ -7,6 +7,11 @@
         stroke: #000;
         stroke-miterlimit: 10;
       }
+
+      .cls-2 {
+        font-family: MalgunGothicBold, 'Malgun Gothic';
+        font-size: 20px;
+      }
     </style>
   </defs>
   <line class="cls-1" x1="30" y1="10" x2="30" y2="40"/>
@@ -14,4 +19,5 @@
   <line class="cls-1" x1="30" y1="25" x2="0" y2="25"/>
   <line class="cls-1" x1="70" y1="25" x2="100" y2="25"/>
   <line class="cls-1" x1="35.4" y1="40" x2="64.6" y2="10.81"/>
+  <text class="cls-2" transform="translate(43.94 31.46)"><tspan x="0" y="0">Y</tspan></text>
 </svg>
