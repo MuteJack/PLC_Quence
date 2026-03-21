@@ -548,7 +548,6 @@ const Ladder = {
     },
 
     _pasteSteps() {
-        // 선택된 step 위치에 붙여넣기, 또는 선택된 step 오른쪽에
         const targetStep = this.selectedStep;
         if (!targetStep) return;
 
@@ -556,16 +555,27 @@ const Ladder = {
         const targetTr = targetTd.closest('tr');
         const cells = Array.from(targetTr.children);
         const stepTds = cells.slice(2, 2 + this.stepCount);
-        let startIdx = stepTds.indexOf(targetTd);
+        const clickedIdx = stepTds.indexOf(targetTd);
+        this.clipboard.data.forEach((cellData) => {
+            if (!cellData.comp || cellData.comp === 'Output_Basic') return;
 
-        this.clipboard.data.forEach((cellData, i) => {
-            const idx = startIdx + i;
-            if (idx >= this.outputCol) return; // output 열은 건너뜀
-            const td = stepTds[idx];
-            if (!td) return;
-            this._restoreCellData(td, cellData, true);
+            const compType = cellData.comp;
+
+            // output 계열 → outputCol에 배치
+            if (this.isOutputType(compType)) {
+                const outputTd = stepTds[this.outputCol];
+                if (!outputTd) return;
+                this._restoreCellData(outputTd, cellData, true);
+                return;
+            }
+
+            // 일반 컴포넌트 → findAutoPlaceTd 사용 (배치 규칙 반영)
+            const placeTd = this.findAutoPlaceTd(targetTr, compType, clickedIdx);
+            if (!placeTd) return;
+            this._restoreCellData(placeTd, cellData, true);
         });
 
+        this.syncAllComments();
         this.updateVariableMonitor();
     },
 
