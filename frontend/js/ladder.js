@@ -31,16 +31,16 @@ const Ladder = {
 
     // 계열 + 접두사 → 컴포넌트 타입
     PREFIX_TO_COMP: {
-        'contact_a': { 'X': 'PB_A', 'M': 'Contact_Memory_A', 'Y': 'Contact_Y_A', 'T': 'Contact_Timer_A' },
-        'contact_b': { 'X': 'PB_B', 'M': 'Contact_Memory_B', 'Y': 'Contact_Y_B', 'T': 'Contact_Timer_B' },
-        'output': { 'Y': 'Output_Y', 'M': 'Function_Memory', 'T': 'Output_Timer' },
+        'contact_a': { 'X': 'PB_A', 'M': 'Contact_Memory_A', 'Y': 'Contact_Y_A', 'T': 'Contact_Timer_A', 'C': 'Contact_Counter_A' },
+        'contact_b': { 'X': 'PB_B', 'M': 'Contact_Memory_B', 'Y': 'Contact_Y_B', 'T': 'Contact_Timer_B', 'C': 'Contact_Counter_B' },
+        'output': { 'Y': 'Output_Y', 'M': 'Function_Memory', 'T': 'Output_Timer', 'C': 'Output_Counter' },
     },
 
     // 계열별 허용 접두사
     FAMILY_PREFIXES: {
-        'contact_a': ['X', 'M', 'Y', 'T'],
-        'contact_b': ['X', 'M', 'Y', 'T'],
-        'output': ['Y', 'M', 'T'],
+        'contact_a': ['X', 'M', 'Y', 'T', 'C'],
+        'contact_b': ['X', 'M', 'Y', 'T', 'C'],
+        'output': ['Y', 'M', 'T', 'C'],
     },
 
     // 할당된 변수명 추적 (변수명 → 사용 횟수)
@@ -1211,8 +1211,8 @@ const Ladder = {
         const tbody = document.getElementById('var-tbody');
         if (!tbody) return;
 
-        const typeMap = { 'X': 'Input', 'Y': 'Output', 'M': 'Memory', 'T': 'Timer' };
-        const colorMap = { 'X': 'var-x', 'Y': 'var-y', 'M': 'var-m', 'T': 'var-t' };
+        const typeMap = { 'X': 'Input', 'Y': 'Output', 'M': 'Memory', 'T': 'Timer', 'C': 'Counter' };
+        const colorMap = { 'X': 'var-x', 'Y': 'var-y', 'M': 'var-m', 'T': 'var-t', 'C': 'var-c' };
 
         // 변수명 정렬: 접두사 순서(X→M→T→Y) → 번호 순
         const order = ['X', 'M', 'T', 'Y'];
@@ -2204,14 +2204,17 @@ const Ladder = {
         'Contact_Memory_A': (val, e) => (val && e) ? 'Connected' : val ? 'Operated' : 'Normal',
         'Contact_Timer_A': (val, e) => (val && e) ? 'Connected' : val ? 'Operated' : 'Normal',
         'Contact_Y_A': (val, e) => (val && e) ? 'Connected' : val ? 'Operated' : 'Normal',
+        'Contact_Counter_A': (val, e) => (val && e) ? 'Connected' : val ? 'Operated' : 'Normal',
         // B접점(NC): 변수OFF+통전 → Connected, 변수ON → Operated, 그 외 → Normal
         'PB_B': (val, e) => (!val && e) ? 'Connected' : val ? 'Operated' : 'Normal',
         'Contact_Memory_B': (val, e) => (!val && e) ? 'Connected' : val ? 'Operated' : 'Normal',
         'Contact_Timer_B': (val, e) => (!val && e) ? 'Connected' : val ? 'Operated' : 'Normal',
         'Contact_Y_B': (val, e) => (!val && e) ? 'Connected' : val ? 'Operated' : 'Normal',
+        'Contact_Counter_B': (val, e) => (!val && e) ? 'Connected' : val ? 'Operated' : 'Normal',
         // 출력: 변수 ON → Connected, OFF → Normal
         'Output_Y': (val) => val ? 'Connected' : 'Normal',
         'Output_Timer': (val) => val ? 'Connected' : 'Normal',
+        'Output_Counter': (val) => val ? 'Connected' : 'Normal',
         'Function_Memory': (val) => val ? 'Connected' : 'Normal',
     },
 

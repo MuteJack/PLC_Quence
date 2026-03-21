@@ -553,6 +553,7 @@ body.running-mode [data-component^="PB_"] .step-symbol-center:hover {
 #var-table .var-y { color: #cc0000; }
 #var-table .var-m { color: #0000cc; }
 #var-table .var-t { color: #cc6600; }
+#var-table .var-c { color: #9900cc; }
 
 #var-table .var-clickable {
     cursor: pointer;
