@@ -830,7 +830,6 @@ const Ladder = {
     },
 
     isOutputType(type) {
-        if (type === 'Output_RST') return false; // RST는 일반 셀에 배치
         return type.startsWith('Output_') || type.startsWith('Function_');
     },
 
