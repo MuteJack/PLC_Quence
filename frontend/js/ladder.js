@@ -18,13 +18,17 @@ const Ladder = {
         'PB_A': 'contact_a',
         'Contact_Memory_A': 'contact_a',
         'Contact_Timer_A': 'contact_a',
+        'Contact_Counter_A': 'contact_a',
         'Contact_Y_A': 'contact_a',
         'PB_B': 'contact_b',
         'Contact_Memory_B': 'contact_b',
         'Contact_Timer_B': 'contact_b',
+        'Contact_Counter_B': 'contact_b',
         'Contact_Y_B': 'contact_b',
         'Output_Y': 'output',
         'Output_Timer': 'output',
+        'Output_Counter': 'output',
+        'Output_RST': 'rst',
         'Function_Memory': 'output',
         'Output_Basic': 'output',
     },
@@ -34,6 +38,7 @@ const Ladder = {
         'contact_a': { 'X': 'PB_A', 'M': 'Contact_Memory_A', 'Y': 'Contact_Y_A', 'T': 'Contact_Timer_A', 'C': 'Contact_Counter_A' },
         'contact_b': { 'X': 'PB_B', 'M': 'Contact_Memory_B', 'Y': 'Contact_Y_B', 'T': 'Contact_Timer_B', 'C': 'Contact_Counter_B' },
         'output': { 'Y': 'Output_Y', 'M': 'Function_Memory', 'T': 'Output_Timer', 'C': 'Output_Counter' },
+        'rst': { 'T': 'Output_RST', 'C': 'Output_RST' },
     },
 
     // 계열별 허용 접두사
@@ -41,6 +46,7 @@ const Ladder = {
         'contact_a': ['X', 'M', 'Y', 'T', 'C'],
         'contact_b': ['X', 'M', 'Y', 'T', 'C'],
         'output': ['Y', 'M', 'T', 'C'],
+        'rst': ['T', 'C'],
     },
 
     // 할당된 변수명 추적 (변수명 → 사용 횟수)
@@ -50,10 +56,10 @@ const Ladder = {
     // 변수별 코멘트 (변수명 → 설명)
     variableComments: {},
 
-    STEP_CELL_HTML: '<td><div class="step-cell"><div class="step-name"></div><div class="step-symbol"><div class="step-symbol-back"></div><div class="step-symbol-fore"><div class="step-symbol-left"></div><div class="step-symbol-center"></div><div class="step-symbol-right"></div></div></div><div class="step-comment"></div></div></td>',
+    STEP_CELL_HTML: '<td><div class="step-cell"><div class="step-name"></div><div class="step-param"></div><div class="step-symbol"><div class="step-symbol-back"></div><div class="step-symbol-fore"><div class="step-symbol-left"></div><div class="step-symbol-center"></div><div class="step-symbol-right"></div></div></div><div class="step-comment"></div></div></td>',
 
     // branch row의 빈 셀 (Line_Normal 배경 없음)
-    BRANCH_CELL_HTML: '<td><div class="step-cell branch-cell"><div class="step-name"></div><div class="step-symbol"><div class="step-symbol-back"></div><div class="step-symbol-fore"><div class="step-symbol-left"></div><div class="step-symbol-center"></div><div class="step-symbol-right"></div></div></div><div class="step-comment"></div></div></td>',
+    BRANCH_CELL_HTML: '<td><div class="step-cell branch-cell"><div class="step-name"></div><div class="step-param"></div><div class="step-symbol"><div class="step-symbol-back"></div><div class="step-symbol-fore"><div class="step-symbol-left"></div><div class="step-symbol-center"></div><div class="step-symbol-right"></div></div></div><div class="step-comment"></div></div></td>',
 
     init() {
         document.querySelector('.btn-add-rung').addEventListener('click', () => this.addRung());
@@ -98,6 +104,18 @@ const Ladder = {
 
                 // 빈 셀 또는 컴포넌트 셀 → 변수명 입력 (빈 셀은 contact_a 기본)
                 this.editStepNameWithCreate(stepName, td, tr);
+                return;
+            }
+
+            // Step Param (Timer/Counter preset값)
+            const stepParam = e.target.closest('.step-param');
+            if (stepParam) {
+                const stepCell = stepParam.closest('.step-cell');
+                const symbol = stepCell.querySelector('.step-symbol');
+                const comp = symbol ? symbol.dataset.component : null;
+                if (comp === 'Output_Timer' || comp === 'Output_Counter') {
+                    this.editStepParam(stepParam, comp);
+                }
                 return;
             }
 
@@ -812,6 +830,7 @@ const Ladder = {
     },
 
     isOutputType(type) {
+        if (type === 'Output_RST') return false; // RST는 일반 셀에 배치
         return type.startsWith('Output_') || type.startsWith('Function_');
     },
 
@@ -1214,8 +1233,19 @@ const Ladder = {
         const typeMap = { 'X': 'Input', 'Y': 'Output', 'M': 'Memory', 'T': 'Timer', 'C': 'Counter' };
         const colorMap = { 'X': 'var-x', 'Y': 'var-y', 'M': 'var-m', 'T': 'var-t', 'C': 'var-c' };
 
-        // 변수명 정렬: 접두사 순서(X→M→T→Y) → 번호 순
-        const order = ['X', 'M', 'T', 'Y'];
+        // preset 수집
+        const presets = {};
+        document.querySelectorAll('#ladder-table tbody .step-cell').forEach(cell => {
+            const nameDiv = cell.querySelector('.step-name');
+            const paramDiv = cell.querySelector('.step-param');
+            if (nameDiv && paramDiv && paramDiv.dataset.preset) {
+                const varName = nameDiv.textContent.trim();
+                if (varName) presets[varName] = paramDiv.dataset.preset;
+            }
+        });
+
+        // 변수명 정렬: 접두사 순서(X→M→T→C→Y) → 번호 순
+        const order = ['X', 'M', 'T', 'C', 'Y'];
         const sorted = Object.keys(this.usedVariables).sort((a, b) => {
             const pa = a.match(/^([A-Z])(\d+)$/);
             const pb = b.match(/^([A-Z])(\d+)$/);
@@ -1231,8 +1261,10 @@ const Ladder = {
             const cls = colorMap[prefix] || '';
             const type = typeMap[prefix] || '?';
             const desc = this.variableComments[name] || '';
+            const preset = presets[name] || '';
+            const target = preset ? (prefix === 'T' ? `${preset}ms` : `K${preset}`) : '';
             const clickable = prefix === 'X' ? ' class="var-clickable" onclick="Ladder.toggleInput(\'' + name + '\')"' : '';
-            return `<tr class="${cls}"${clickable}><td>${name}</td><td>${type}</td><td>-</td><td>${desc}</td></tr>`;
+            return `<tr class="${cls}"${clickable}><td>${name}</td><td>${type}</td><td>-</td><td>${target}</td><td>${desc}</td></tr>`;
         }).join('');
     },
 
@@ -1258,6 +1290,15 @@ const Ladder = {
         const back = td.querySelector('.step-symbol-back');
         back.innerHTML = `<img src="images/Components/${newCompType}_Normal.svg">`;
         symbol.dataset.component = newCompType;
+
+        // Timer/Counter가 아닌 타입으로 바뀌면 param 초기화
+        if (newCompType !== 'Output_Timer' && newCompType !== 'Output_Counter') {
+            const paramDiv = td.querySelector('.step-param');
+            if (paramDiv) {
+                paramDiv.textContent = '';
+                delete paramDiv.dataset.preset;
+            }
+        }
     },
 
     // 빈 셀 또는 기존 컴포넌트에서 변수명 직접 입력 (a/b 접미사 지원)
@@ -1476,6 +1517,51 @@ const Ladder = {
     },
 
     // === Comment 편집 ===
+
+    editStepParam(stepParamDiv, compType) {
+        if (stepParamDiv.querySelector('input')) return;
+
+        const currentText = stepParamDiv.textContent.trim();
+        const isTimer = compType === 'Output_Timer';
+        const placeholder = isTimer ? 'ms (예: 3000)' : '횟수 (예: 10)';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = currentText;
+        input.className = 'step-param-input';
+        input.placeholder = placeholder;
+
+        stepParamDiv.textContent = '';
+        stepParamDiv.appendChild(input);
+        input.focus();
+        input.select();
+
+        const finish = () => {
+            const value = input.value.trim();
+            if (value && !/^\d+$/.test(value)) {
+                alert('Error: 숫자만 입력 가능합니다.');
+                stepParamDiv.textContent = currentText;
+                return;
+            }
+            if (value) {
+                stepParamDiv.textContent = isTimer ? `${value}ms` : `K${value}`;
+                stepParamDiv.dataset.preset = value;
+            } else {
+                stepParamDiv.textContent = '';
+                delete stepParamDiv.dataset.preset;
+            }
+            this.updateVariableMonitor();
+        };
+
+        input.addEventListener('blur', finish);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') input.blur();
+            if (e.key === 'Escape') {
+                input.value = currentText.replace(/ms$|^K/, '');
+                input.blur();
+            }
+        });
+    },
 
     editVariableComment(stepCommentDiv, varName) {
         if (stepCommentDiv.querySelector('input')) return;
@@ -1893,11 +1979,27 @@ const Ladder = {
         });
 
         // [variables] 섹션
+        // preset 수집: step-param에서 dataset.preset 읽기
+        const presets = {};
+        document.querySelectorAll('#ladder-table tbody .step-cell').forEach(cell => {
+            const nameDiv = cell.querySelector('.step-name');
+            const paramDiv = cell.querySelector('.step-param');
+            if (nameDiv && paramDiv && paramDiv.dataset.preset) {
+                const varName = nameDiv.textContent.trim();
+                if (varName) presets[varName] = paramDiv.dataset.preset;
+            }
+        });
+
+        // 모든 사용 중인 변수명 수집
+        const allVars = new Set([...Object.keys(this.variableComments), ...Object.keys(presets), ...Object.keys(this.usedVariables)]);
+
         lines.push('');
         lines.push('[variables]');
-        lines.push('name,comment');
-        Object.keys(this.variableComments).sort().forEach(name => {
-            lines.push(`${name},${this.escapeCSV(this.variableComments[name])}`);
+        lines.push('name,comment,preset');
+        Array.from(allVars).sort().forEach(name => {
+            const comment = this.escapeCSV(this.variableComments[name] || '');
+            const preset = presets[name] || '';
+            lines.push(`${name},${comment},${preset}`);
         });
 
         return lines.join('\n');
@@ -1931,7 +2033,12 @@ const Ladder = {
                 ladderRows.push(line.split(','));
             } else if (section === 'variables') {
                 const parts = line.split(',');
-                if (parts[0]) variables[parts[0]] = parts.slice(1).join(',').replace(/^"|"$/g, '');
+                if (parts[0]) {
+                    variables[parts[0]] = {
+                        comment: (parts[1] || '').replace(/^"|"$/g, ''),
+                        preset: parts[2] || ''
+                    };
+                }
             }
         }
 
@@ -2037,8 +2144,33 @@ const Ladder = {
             }
         }
 
-        // variables 복원
-        this.variableComments = variables;
+        // variables 복원 (comment + preset)
+        this.variableComments = {};
+        const presetData = {};
+        for (const [name, info] of Object.entries(variables)) {
+            if (info.comment) this.variableComments[name] = info.comment;
+            if (info.preset) presetData[name] = info.preset;
+        }
+
+        // preset 값을 해당 step-param에 적용
+        document.querySelectorAll('#ladder-table tbody .step-cell').forEach(cell => {
+            const nameDiv = cell.querySelector('.step-name');
+            const paramDiv = cell.querySelector('.step-param');
+            const symbol = cell.querySelector('.step-symbol');
+            if (!nameDiv || !paramDiv || !symbol) return;
+            const varName = nameDiv.textContent.trim();
+            const comp = symbol.dataset.component;
+            if (varName && presetData[varName]) {
+                const preset = presetData[varName];
+                paramDiv.dataset.preset = preset;
+                if (comp === 'Output_Timer') {
+                    paramDiv.textContent = `${preset}ms`;
+                } else if (comp === 'Output_Counter') {
+                    paramDiv.textContent = `K${preset}`;
+                }
+            }
+        });
+
         this.syncAllComments();
         this.updateVariableMonitor();
     },
@@ -2093,7 +2225,7 @@ const Ladder = {
             const data = JSON.parse(e.data);
 
             if (data.type === 'io_state') {
-                this.updateIOState(data.io, data.scan_count);
+                this.updateIOState(data.io, data.values || {}, data.scan_count);
             } else if (data.type === 'code_generated') {
                 console.log('Generated code:', data.code);
             } else if (data.type === 'stopped') {
@@ -2172,7 +2304,7 @@ const Ladder = {
     },
 
     // I/O 상태를 Variable Monitor에 반영
-    updateIOState(ioState) {
+    updateIOState(ioState, values) {
         this.lastIOState = ioState;
         const tbody = document.getElementById('var-tbody');
         if (!tbody) return;
@@ -2182,8 +2314,23 @@ const Ladder = {
         rows.forEach(row => {
             const varName = row.children[0] ? row.children[0].textContent : '';
             const valueCell = row.children[2]; // Value는 3번째 열
-            if (valueCell && varName in ioState) {
-                const val = ioState[varName];
+            if (!valueCell || !(varName in ioState)) return;
+
+            const val = ioState[varName];
+            const prefix = varName.charAt(0);
+
+            if (prefix === 'T' && varName in values) {
+                // Timer: 경과시간 표시
+                valueCell.textContent = `${values[varName]}ms`;
+                valueCell.style.color = val ? '#22aa22' : '#666';
+                valueCell.style.fontWeight = val ? '600' : 'normal';
+            } else if (prefix === 'C' && varName in values) {
+                // Counter: 카운트 표시
+                valueCell.textContent = `${values[varName]}`;
+                valueCell.style.color = val ? '#22aa22' : '#666';
+                valueCell.style.fontWeight = val ? '600' : 'normal';
+            } else {
+                // 일반: ON/OFF
                 valueCell.textContent = val ? 'ON' : 'OFF';
                 valueCell.style.color = val ? '#22aa22' : '#cc2222';
                 valueCell.style.fontWeight = '600';
@@ -2215,6 +2362,7 @@ const Ladder = {
         'Output_Y': (val) => val ? 'Connected' : 'Normal',
         'Output_Timer': (val) => val ? 'Connected' : 'Normal',
         'Output_Counter': (val) => val ? 'Connected' : 'Normal',
+        'Output_RST': (val) => val ? 'Connected' : 'Normal',
         'Function_Memory': (val) => val ? 'Connected' : 'Normal',
     },
 

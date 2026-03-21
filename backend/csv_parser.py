@@ -31,9 +31,12 @@ def parse_csv(csv_text: str) -> dict:
         elif section == 'ladder':
             ladder_rows.append(line.split(','))
         elif section == 'variables':
-            parts = line.split(',', 1)
+            parts = line.split(',')
             if parts[0]:
-                variables[parts[0]] = parts[1] if len(parts) > 1 else ''
+                variables[parts[0]] = {
+                    'comment': parts[1] if len(parts) > 1 else '',
+                    'preset': parts[2] if len(parts) > 2 else ''
+                }
 
     return {
         'meta': meta,

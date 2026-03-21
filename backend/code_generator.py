@@ -4,6 +4,7 @@
 CONTACT_A_FAMILIES = ('contact_a',)
 CONTACT_B_FAMILIES = ('contact_b',)
 OUTPUT_FAMILIES = ('output',)
+RST_FAMILIES = ('rst',)
 
 
 def generate_code(rungs: list) -> str:
@@ -19,12 +20,13 @@ def generate_code(rungs: list) -> str:
     lines.append('"""자동 생성된 PLC 래더 로직"""')
     lines.append('')
     lines.append('')
-    lines.append('def scan_cycle(io, timers):')
+    lines.append('def scan_cycle(io, timers, counters):')
     lines.append('    """1 스캔 사이클 실행')
     lines.append('    ')
     lines.append('    Args:')
     lines.append('        io: dict - I/O 상태 {변수명: bool}')
     lines.append('        timers: dict - 타이머 상태 {변수명: Timer}')
+    lines.append('        counters: dict - 카운터 상태 {변수명: Counter}')
     lines.append('    """')
 
     if not rungs:
@@ -54,30 +56,39 @@ def _generate_rung(rung: dict) -> list:
     main_steps = main['steps']
     main_vlines = {v['col']: v['dir'] for v in main['vlines']}
 
-    # output 찾기 (마지막 step)
+    # output과 RST 찾기
     output_step = None
     output_idx = None
+    rst_steps = []
     for i in range(len(main_steps) - 1, -1, -1):
         step = main_steps[i]
-        if step and step['family'] in OUTPUT_FAMILIES:
+        if step and step['family'] in OUTPUT_FAMILIES and output_step is None:
             output_step = step
             output_idx = i
-            break
+    for i, step in enumerate(main_steps):
+        if step and step['family'] in RST_FAMILIES:
+            rst_steps.append((i, step))
 
-    if not output_step:
+    if not output_step and not rst_steps:
         lines.append('pass  # 출력 없음')
         return lines
 
+    # output_idx가 없으면 RST만 있는 렁 → RST 위치 기준
+    effective_output_idx = output_idx if output_idx is not None else len(main_steps)
+
     # branch가 없는 경우: 단순 직렬
     if not branches:
-        contacts = _collect_contacts(main_steps, 0, output_idx)
+        contacts = _collect_contacts(main_steps, 0, effective_output_idx)
         if contacts:
             expr = _build_and_expr(contacts)
             lines.append(f'rung{rung_id} = {expr}')
         else:
             lines.append(f'rung{rung_id} = True')
 
-        _append_output(lines, output_step, rung_id)
+        if output_step:
+            _append_output(lines, output_step, rung_id)
+        for _, rst in rst_steps:
+            _append_rst(lines, rst, rung_id)
         return lines
 
     # branch가 있는 경우: 분기 구간 파악
@@ -86,14 +97,17 @@ def _generate_rung(rung: dict) -> list:
 
     if not vdown_cols:
         # vertical line 정보가 없으면 단순 직렬 처리
-        contacts = _collect_contacts(main_steps, 0, output_idx)
+        contacts = _collect_contacts(main_steps, 0, effective_output_idx)
         if contacts:
             expr = _build_and_expr(contacts)
             lines.append(f'rung{rung_id} = {expr}')
         else:
             lines.append(f'rung{rung_id} = True')
 
-        _append_output(lines, output_step, rung_id)
+        if output_step:
+            _append_output(lines, output_step, rung_id)
+        for _, rst in rst_steps:
+            _append_rst(lines, rst, rung_id)
         return lines
 
     # branch row의 v-up 위치 수집
@@ -105,7 +119,7 @@ def _generate_rung(rung: dict) -> list:
         # v-down col → 분기 전은 0 ~ col+1 (col 포함)
         # v-up col → 분기 후는 col+1 ~
         branch_start = min(vdown_cols) if vdown_cols else 0
-        branch_end = max(vup_cols) if vup_cols else output_idx
+        branch_end = max(vup_cols) if vup_cols else effective_output_idx
 
         # === 분기 전 (공통 AND): 0 ~ branch_start+1 (branch_start 셀 포함) ===
         pre_contacts = _collect_contacts(main_steps, 0, branch_start + 1)
@@ -129,7 +143,7 @@ def _generate_rung(rung: dict) -> list:
         branch_path_contacts = _collect_contacts(branch['steps'], range_start, range_end)
 
         # === 분기 후 (공통 AND): branch_end+1 ~ output_idx ===
-        post_contacts = _collect_contacts(main_steps, range_end, output_idx)
+        post_contacts = _collect_contacts(main_steps, range_end, effective_output_idx)
 
         # 코드 생성
         parts = []
@@ -163,7 +177,10 @@ def _generate_rung(rung: dict) -> list:
         full_expr = ' and '.join(parts) if parts else 'True'
         lines.append(f'rung{rung_id} = {full_expr}')
 
-    _append_output(lines, output_step, rung_id)
+    if output_step:
+        _append_output(lines, output_step, rung_id)
+    for _, rst in rst_steps:
+        _append_rst(lines, rst, rung_id)
     return lines
 
 
@@ -198,13 +215,34 @@ def _append_output(lines: list, output_step: dict, rung_id: int):
     if not var:
         return
 
-    # 타이머 출력
     prefix = var[0] if var else ''
     if prefix == 'T':
+        # 타이머 출력
         lines.append(f"if rung{rung_id}:")
         lines.append(f"    timers['{var}'].run()")
         lines.append(f"else:")
         lines.append(f"    timers['{var}'].reset()")
         lines.append(f"io['{var}'] = timers['{var}'].done")
+    elif prefix == 'C':
+        # 카운터 출력
+        lines.append(f"counters['{var}'].update(rung{rung_id})")
+        lines.append(f"io['{var}'] = counters['{var}'].done")
     else:
         lines.append(f"io['{var}'] = rung{rung_id}")
+
+
+def _append_rst(lines: list, rst_step: dict, rung_id: int):
+    """RST 코드 추가"""
+    var = rst_step['var']
+    if not var:
+        return
+
+    prefix = var[0] if var else ''
+    if prefix == 'T':
+        lines.append(f"if rung{rung_id}:")
+        lines.append(f"    timers['{var}'].reset()")
+        lines.append(f"    io['{var}'] = False")
+    elif prefix == 'C':
+        lines.append(f"if rung{rung_id}:")
+        lines.append(f"    counters['{var}'].reset()")
+        lines.append(f"    io['{var}'] = False")

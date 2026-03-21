@@ -103,19 +103,20 @@ def load_and_generate(csv_text: str) -> dict | None:
         rungs = build_rungs(parsed)
         code = generate_code(rungs)
 
-        variables = set()
+        # parsed['variables']에 래더에서 사용된 변수 추가 (preset 없는 것들)
+        variables = dict(parsed.get('variables', {}))
         for rung in rungs:
             for step in rung['main']['steps']:
-                if step and step.get('var'):
-                    variables.add(step['var'])
+                if step and step.get('var') and step['var'] not in variables:
+                    variables[step['var']] = {'comment': '', 'preset': ''}
             for branch in rung.get('branches', []):
                 for step in branch['steps']:
-                    if step and step.get('var'):
-                        variables.add(step['var'])
+                    if step and step.get('var') and step['var'] not in variables:
+                        variables[step['var']] = {'comment': '', 'preset': ''}
 
         return {
             'code': code,
-            'variables': list(variables)
+            'variables': variables
         }
     except Exception as e:
         print(f"Error: {e}")
