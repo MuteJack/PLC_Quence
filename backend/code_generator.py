@@ -110,77 +110,184 @@ def _generate_rung(rung: dict) -> list:
             _append_rst(lines, rst, rung_id)
         return lines
 
-    # branch row의 v-up 위치 수집
+    # branch row에 자체 output이 있는지 확인
+    branch_has_output = False
     for branch in branches:
-        branch_vlines = {v['col']: v['dir'] for v in branch['vlines']}
-        vup_cols = sorted(col for col, d in branch_vlines.items() if d == 'u')
-
-        # 분기 구간: v-down은 셀 오른쪽에 있으므로 해당 셀까지가 분기 전
-        # v-down col → 분기 전은 0 ~ col+1 (col 포함)
-        # v-up col → 분기 후는 col+1 ~
-        branch_start = min(vdown_cols) if vdown_cols else 0
-        branch_end = max(vup_cols) if vup_cols else effective_output_idx
-
-        # === 분기 전 (공통 AND): 0 ~ branch_start+1 (branch_start 셀 포함) ===
-        pre_contacts = _collect_contacts(main_steps, 0, branch_start + 1)
-
-        # === 분기 구간 (OR) ===
-        # 분기 시작: v-down 셀 다음
-        range_start = branch_start + 1
-
-        # 분기 끝: branch row에서 마지막 컴포넌트 위치 + 1
-        last_branch_comp = range_start
-        for idx in range(len(branch['steps']) - 1, -1, -1):
-            if branch['steps'][idx] is not None:
-                last_branch_comp = idx + 1
+        for step in branch['steps']:
+            if step and step['family'] in OUTPUT_FAMILIES + RST_FAMILIES:
+                branch_has_output = True
                 break
-        range_end = max(branch_end + 1, last_branch_comp)
 
-        # main path
-        main_path_contacts = _collect_contacts(main_steps, range_start, range_end)
+    if branch_has_output:
+        # === 각 경로에 자체 output이 있는 경우 ===
+        branch_start = min(vdown_cols)
 
-        # branch path
-        branch_path_contacts = _collect_contacts(branch['steps'], range_start, range_end)
-
-        # === 분기 후 (공통 AND): branch_end+1 ~ output_idx ===
-        post_contacts = _collect_contacts(main_steps, range_end, effective_output_idx)
-
-        # 코드 생성
-        parts = []
-
+        # 공통 입력 (분기 전)
+        pre_contacts = _collect_contacts(main_steps, 0, branch_start + 1)
         if pre_contacts:
             pre_expr = _build_and_expr(pre_contacts)
-            parts.append(pre_expr)
-
-        # OR 부분: 접점이 없는 경로는 제외 (도선만 있는 경우)
-        or_parts = []
-        if main_path_contacts:
-            or_parts.append(_build_and_expr(main_path_contacts))
-
-        if branch_path_contacts:
-            or_parts.append(_build_and_expr(branch_path_contacts))
-
-        # 양쪽 모두 접점이 없으면 True
-        if not or_parts:
-            or_parts.append('True')
-
-        if len(or_parts) > 1:
-            or_expr = f'({" or ".join(or_parts)})'
+            lines.append(f'rung{rung_id}_pre = {pre_expr}')
         else:
-            or_expr = or_parts[0]
-        parts.append(or_expr)
+            lines.append(f'rung{rung_id}_pre = True')
 
-        if post_contacts:
-            post_expr = _build_and_expr(post_contacts)
-            parts.append(post_expr)
+        # 모든 경로 (main + branches) 수집
+        all_paths = []
 
-        full_expr = ' and '.join(parts) if parts else 'True'
-        lines.append(f'rung{rung_id} = {full_expr}')
+        # main 경로
+        main_contacts = _collect_contacts(main_steps, branch_start + 1, effective_output_idx)
+        main_output = output_step
+        main_rsts = rst_steps
+        all_paths.append({
+            'name': f'rung{rung_id}_main',
+            'contacts': main_contacts,
+            'output': main_output,
+            'rsts': main_rsts,
+            'vlines': main_vlines,
+        })
 
-    if output_step:
-        _append_output(lines, output_step, rung_id)
-    for _, rst in rst_steps:
-        _append_rst(lines, rst, rung_id)
+        # branch 경로
+        for bi, branch in enumerate(branches):
+            branch_contacts = _collect_contacts(branch['steps'], 0, len(branch['steps']))
+            branch_output = None
+            branch_rsts = []
+            branch_vl = {v['col']: v['dir'] for v in branch['vlines']}
+            for step in branch['steps']:
+                if step and step['family'] in OUTPUT_FAMILIES:
+                    branch_output = step
+                if step and step['family'] in RST_FAMILIES:
+                    branch_rsts.append(step)
+            all_paths.append({
+                'name': f'rung{rung_id}_b{bi}',
+                'contacts': branch_contacts,
+                'output': branch_output,
+                'rsts': branch_rsts,
+                'vlines': branch_vl,
+            })
+
+        # branch 간 OR 그룹 감지: branch 간 vertical line(d/u 쌍)이 있으면 OR
+        or_groups = []  # [{paths: [idx, ...], expr_name: str}]
+        grouped = set()
+
+        for i in range(1, len(all_paths)):
+            for j in range(i + 1, len(all_paths)):
+                vl_i = all_paths[i].get('vlines', {})
+                vl_j = all_paths[j].get('vlines', {})
+                # i에 d, j에 u (또는 반대)가 같은 col에 있으면 OR 그룹
+                for col in vl_i:
+                    if col in vl_j:
+                        if (vl_i[col] == 'd' and vl_j[col] == 'u') or \
+                           (vl_i[col] == 'u' and vl_j[col] == 'd'):
+                            # OR 그룹 찾기 또는 생성
+                            found = False
+                            for g in or_groups:
+                                if i in g['paths'] or j in g['paths']:
+                                    g['paths'].add(i)
+                                    g['paths'].add(j)
+                                    found = True
+                                    break
+                            if not found:
+                                or_groups.append({'paths': {i, j}})
+                            grouped.add(i)
+                            grouped.add(j)
+
+        # 각 경로 / OR 그룹에 대해 코드 생성
+        for i, path in enumerate(all_paths):
+            if i in grouped:
+                continue  # OR 그룹에서 처리
+
+            if path['contacts']:
+                expr = f'rung{rung_id}_pre and {_build_and_expr(path["contacts"])}'
+            else:
+                expr = f'rung{rung_id}_pre'
+            lines.append(f'{path["name"]} = {expr}')
+
+            if path['output']:
+                _append_output_with_expr(lines, path['output'], path['name'])
+            for rst in path.get('rsts', []):
+                if isinstance(rst, tuple):
+                    rst = rst[1]
+                _append_rst_with_expr(lines, rst, path['name'])
+
+        # OR 그룹 처리
+        for gi, group in enumerate(or_groups):
+            path_indices = sorted(group['paths'])
+            or_parts = []
+            for idx in path_indices:
+                path = all_paths[idx]
+                if path['contacts']:
+                    or_parts.append(_build_and_expr(path['contacts']))
+                else:
+                    or_parts.append('True')
+
+            if len(or_parts) > 1:
+                or_expr = f'({" or ".join(or_parts)})'
+            else:
+                or_expr = or_parts[0]
+            group_name = f'rung{rung_id}_or{gi}'
+            lines.append(f'{group_name} = rung{rung_id}_pre and {or_expr}')
+
+            # 그룹 내 모든 output에 같은 결과 적용
+            for idx in path_indices:
+                path = all_paths[idx]
+                if path['output']:
+                    _append_output_with_expr(lines, path['output'], group_name)
+                for rst in path.get('rsts', []):
+                    if isinstance(rst, tuple):
+                        rst = rst[1]
+                    _append_rst_with_expr(lines, rst, group_name)
+
+    else:
+        # === branch에 output이 없는 경우: 기존 OR 합류 방식 ===
+        for branch in branches:
+            branch_vlines = {v['col']: v['dir'] for v in branch['vlines']}
+            vup_cols = sorted(col for col, d in branch_vlines.items() if d == 'u')
+
+            branch_start = min(vdown_cols) if vdown_cols else 0
+            branch_end = max(vup_cols) if vup_cols else effective_output_idx
+
+            pre_contacts = _collect_contacts(main_steps, 0, branch_start + 1)
+            range_start = branch_start + 1
+
+            last_branch_comp = range_start
+            for idx in range(len(branch['steps']) - 1, -1, -1):
+                if branch['steps'][idx] is not None:
+                    last_branch_comp = idx + 1
+                    break
+            range_end = max(branch_end + 1, last_branch_comp)
+
+            main_path_contacts = _collect_contacts(main_steps, range_start, range_end)
+            branch_path_contacts = _collect_contacts(branch['steps'], range_start, range_end)
+            post_contacts = _collect_contacts(main_steps, range_end, effective_output_idx)
+
+            parts = []
+            if pre_contacts:
+                parts.append(_build_and_expr(pre_contacts))
+
+            or_parts = []
+            if main_path_contacts:
+                or_parts.append(_build_and_expr(main_path_contacts))
+            if branch_path_contacts:
+                or_parts.append(_build_and_expr(branch_path_contacts))
+            if not or_parts:
+                or_parts.append('True')
+
+            if len(or_parts) > 1:
+                or_expr = f'({" or ".join(or_parts)})'
+            else:
+                or_expr = or_parts[0]
+            parts.append(or_expr)
+
+            if post_contacts:
+                parts.append(_build_and_expr(post_contacts))
+
+            full_expr = ' and '.join(parts) if parts else 'True'
+            lines.append(f'rung{rung_id} = {full_expr}')
+
+        if output_step:
+            _append_output(lines, output_step, rung_id)
+        for _, rst in rst_steps:
+            _append_rst(lines, rst, rung_id)
+
     return lines
 
 
@@ -211,38 +318,46 @@ def _build_and_expr(contacts: list) -> str:
 
 def _append_output(lines: list, output_step: dict, rung_id: int):
     """출력 코드 추가"""
+    _append_output_with_expr(lines, output_step, f'rung{rung_id}')
+
+
+def _append_rst(lines: list, rst_step: dict, rung_id: int):
+    """RST 코드 추가"""
+    _append_rst_with_expr(lines, rst_step, f'rung{rung_id}')
+
+
+def _append_output_with_expr(lines: list, output_step: dict, expr: str):
+    """출력 코드 추가 (임의 표현식 사용)"""
     var = output_step['var']
     if not var:
         return
 
     prefix = var[0] if var else ''
     if prefix == 'T':
-        # 타이머 출력
-        lines.append(f"if rung{rung_id}:")
+        lines.append(f"if {expr}:")
         lines.append(f"    timers['{var}'].run()")
         lines.append(f"else:")
         lines.append(f"    timers['{var}'].reset()")
         lines.append(f"io['{var}'] = timers['{var}'].done")
     elif prefix == 'C':
-        # 카운터 출력
-        lines.append(f"counters['{var}'].update(rung{rung_id})")
+        lines.append(f"counters['{var}'].update({expr})")
         lines.append(f"io['{var}'] = counters['{var}'].done")
     else:
-        lines.append(f"io['{var}'] = rung{rung_id}")
+        lines.append(f"io['{var}'] = {expr}")
 
 
-def _append_rst(lines: list, rst_step: dict, rung_id: int):
-    """RST 코드 추가"""
+def _append_rst_with_expr(lines: list, rst_step: dict, expr: str):
+    """RST 코드 추가 (임의 표현식 사용)"""
     var = rst_step['var']
     if not var:
         return
 
     prefix = var[0] if var else ''
     if prefix == 'T':
-        lines.append(f"if rung{rung_id}:")
+        lines.append(f"if {expr}:")
         lines.append(f"    timers['{var}'].reset()")
         lines.append(f"    io['{var}'] = False")
     elif prefix == 'C':
-        lines.append(f"if rung{rung_id}:")
+        lines.append(f"if {expr}:")
         lines.append(f"    counters['{var}'].reset()")
         lines.append(f"    io['{var}'] = False")

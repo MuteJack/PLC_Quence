@@ -616,6 +616,17 @@ const Ladder = {
             this.registerVariable(nameDiv.textContent.trim(), cellData.comp);
         }
 
+        // vertical line 복원
+        if (cellData.vLines && cellData.vLines.length > 0) {
+            const stepCell = td.querySelector('.step-cell');
+            if (stepCell) {
+                cellData.vLines.forEach(vl => {
+                    const dir = vl.dir === 'down' ? 'v-down' : 'v-up';
+                    this.addVerticalLine(stepCell, vl.side, dir);
+                });
+            }
+        }
+
         // 코멘트는 변수 기반으로 자동 반영됨
     },
 
@@ -879,9 +890,12 @@ const Ladder = {
             return;
         }
 
+        // outputCol에 input/contact 계열 배치 방지
+        const clickedIdx = Array.from(tr.children).indexOf(td) - 2;
+        if (clickedIdx === this.outputCol && !this.isOutputType(type)) return;
+
         // 빈 셀 또는 Line 셀 클릭 → 자동 배치
         if (!symbolDiv.dataset.component || symbolDiv.dataset.component === 'Line') {
-            const clickedIdx = Array.from(tr.children).indexOf(td) - 2;
             const targetTd = this.findAutoPlaceTd(tr, type, clickedIdx);
             if (!targetTd) return;
             const targetSymbol = targetTd.querySelector('.step-symbol');
@@ -891,7 +905,8 @@ const Ladder = {
             return;
         }
 
-        // 이미 컴포넌트가 있는 셀 → 교체
+        // 이미 컴포넌트가 있는 셀 → 교체 (outputCol에 non-output 방지)
+        if (clickedIdx === this.outputCol && !this.isOutputType(type)) return;
         const backDiv = symbolDiv.querySelector('.step-symbol-back');
         backDiv.innerHTML = `<img src="${imgSrc}">`;
         symbolDiv.dataset.component = type;
@@ -1151,24 +1166,48 @@ const Ladder = {
             anchorTd = td; // 현재 셀
         }
 
-        // 메인 행: 아래로 반줄
-        const mainCell = anchorTd.querySelector('.step-cell');
-        this.addVerticalLine(mainCell, 'right', 'v-down');
+        const isBranch = tr.classList.contains('rung-branch');
 
-        // branch row 생성 또는 기존 사용
-        let branchRow = tr.nextElementSibling;
-        if (!branchRow || !branchRow.classList.contains('rung-branch')) {
-            branchRow = this.createBranchRow(tr);
-        }
+        if (isBranch) {
+            // branch 행에서 vertical line 배치: 이 행에 v-down, 아래 행에 v-up
+            const currentCell = anchorTd.querySelector('.step-cell');
+            this.addVerticalLine(currentCell, 'right', 'v-down');
 
-        // branch 행: 위로 반줄 (같은 열 위치)
-        const branchCells = Array.from(branchRow.children);
-        const branchAnchorIdx = cells.indexOf(anchorTd);
-        const branchTd = branchCells[branchAnchorIdx];
-        if (branchTd) {
-            const branchCell = branchTd.querySelector('.step-cell');
-            if (branchCell) {
-                this.addVerticalLine(branchCell, 'right', 'v-up');
+            // 아래 branch row 생성 또는 기존 사용
+            let nextBranch = tr.nextElementSibling;
+            if (!nextBranch || !nextBranch.classList.contains('rung-branch')) {
+                nextBranch = this._createBranchRow();
+                tr.after(nextBranch);
+            }
+            const nextCells = Array.from(nextBranch.children);
+            const nextAnchorIdx = cells.indexOf(anchorTd);
+            const nextTd = nextCells[nextAnchorIdx];
+            if (nextTd) {
+                const nextCell = nextTd.querySelector('.step-cell');
+                if (nextCell) {
+                    this.addVerticalLine(nextCell, 'right', 'v-up');
+                }
+            }
+        } else {
+            // 메인 행: 아래로 반줄
+            const mainCell = anchorTd.querySelector('.step-cell');
+            this.addVerticalLine(mainCell, 'right', 'v-down');
+
+            // branch row 생성 또는 기존 사용
+            let branchRow = tr.nextElementSibling;
+            if (!branchRow || !branchRow.classList.contains('rung-branch')) {
+                branchRow = this.createBranchRow(tr);
+            }
+
+            // branch 행: 위로 반줄 (같은 열 위치)
+            const branchCells = Array.from(branchRow.children);
+            const branchAnchorIdx = cells.indexOf(anchorTd);
+            const branchTd = branchCells[branchAnchorIdx];
+            if (branchTd) {
+                const branchCell = branchTd.querySelector('.step-cell');
+                if (branchCell) {
+                    this.addVerticalLine(branchCell, 'right', 'v-up');
+                }
             }
         }
     },
@@ -1888,29 +1927,43 @@ const Ladder = {
 
     save() {
         const csv = this.exportCSV();
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'ladder_project.csv';
-        a.click();
-        URL.revokeObjectURL(url);
+        if (window.pywebview && window.pywebview.api) {
+            // PyWebView 모드: 네이티브 파일 저장 다이얼로그
+            window.pywebview.api.save_file(csv);
+        } else {
+            // 브라우저 모드: Blob 다운로드
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'ladder_project.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
     },
 
     load() {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.csv';
-        input.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                this.importCSV(ev.target.result);
-            };
-            reader.readAsText(file);
-        });
-        input.click();
+        if (window.pywebview && window.pywebview.api) {
+            // PyWebView 모드: 네이티브 파일 열기 다이얼로그
+            window.pywebview.api.load_file().then(csvText => {
+                if (csvText) this.importCSV(csvText);
+            });
+        } else {
+            // 브라우저 모드: file input
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.csv';
+            input.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    this.importCSV(ev.target.result);
+                };
+                reader.readAsText(file);
+            });
+            input.click();
+        }
     },
 
     exportCSV() {
@@ -2514,7 +2567,7 @@ const Ladder = {
     _calcBranchEnergized(branchCells, ioState, mainEnergized) {
         const energized = [];
         let prev = false;
-        let inBranch = false; // v-up 사이에서만 통전 계산
+        let inBranch = false;
 
         // v-up 위치 수집
         const vupPositions = [];
@@ -2525,13 +2578,23 @@ const Ladder = {
             }
         }
 
-        // 첫 번째 v-up = 분기 시작, 마지막 v-up = 합류
         const startCol = vupPositions.length > 0 ? vupPositions[0] : -1;
         const endCol = vupPositions.length > 1 ? vupPositions[vupPositions.length - 1] : startCol;
 
+        // branch에서 마지막 컴포넌트/Line 위치 찾기 (output 포함)
+        let lastCompCol = endCol;
+        for (let i = branchCells.length - 1; i >= 0; i--) {
+            const cell = branchCells[i].querySelector('.step-cell');
+            if (!cell) continue;
+            const symbol = cell.querySelector('.step-symbol');
+            if (symbol && symbol.dataset.component) {
+                lastCompCol = i;
+                break;
+            }
+        }
+
         for (let i = 0; i < branchCells.length; i++) {
             if (i === startCol) {
-                // 분기 시작: main의 같은 위치 통전 상태를 받음
                 prev = mainEnergized[i];
                 inBranch = true;
             }
@@ -2544,8 +2607,9 @@ const Ladder = {
 
             energized.push(prev);
 
-            if (i === endCol && inBranch) {
-                inBranch = false; // 합류 이후는 통전 계산 중단
+            // 합류점 이후, 마지막 컴포넌트까지 도달하면 통전 중단
+            if (i >= endCol && i >= lastCompCol && inBranch) {
+                inBranch = false;
             }
         }
 
@@ -2566,17 +2630,18 @@ const Ladder = {
             // Line: 통전 상태에 따라 Normal/Connected
             if (!comp || comp === 'Line') {
                 const isBranchCell = cell.classList.contains('branch-cell');
-                if (isBranchCell && !isEnergized) {
+                if (isBranchCell && !comp) {
+                    // branch의 순수 빈 셀: Line 표시하지 않음
                     back.innerHTML = '';
                     back.style.background = 'none';
-                } else {
-                    const lineSuffix = isEnergized ? 'Connected' : 'Normal';
-                    const lineSrc = `images/Components/Line_${lineSuffix}.svg`;
-                    const img = back.querySelector('img');
-                    if (img && img.src.endsWith(lineSrc)) return;
-                    back.innerHTML = `<img src="${lineSrc}">`;
-                    back.style.background = 'none';
+                    return;
                 }
+                const lineSuffix = isEnergized ? 'Connected' : 'Normal';
+                const lineSrc = `images/Components/Line_${lineSuffix}.svg`;
+                const img = back.querySelector('img');
+                if (img && img.src.endsWith(lineSrc)) return;
+                back.innerHTML = `<img src="${lineSrc}">`;
+                back.style.background = 'none';
                 return;
             }
 

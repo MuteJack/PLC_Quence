@@ -148,12 +148,41 @@ def run_app():
         except Exception:
             time.sleep(0.5)
 
+    # PyWebView API
+    class Api:
+        def save_file(self, csv_data):
+            result = webview.windows[0].create_file_dialog(
+                webview.SAVE_DIALOG,
+                file_types=('CSV Files (*.csv)',),
+                save_filename='ladder_project.csv'
+            )
+            if result:
+                path = result if isinstance(result, str) else result[0]
+                with open(path, 'w', encoding='utf-8') as f:
+                    f.write(csv_data)
+                return path
+            return None
+
+        def load_file(self):
+            result = webview.windows[0].create_file_dialog(
+                webview.OPEN_DIALOG,
+                file_types=('CSV Files (*.csv)',)
+            )
+            if result:
+                path = result if isinstance(result, str) else result[0]
+                with open(path, 'r', encoding='utf-8') as f:
+                    return f.read()
+            return None
+
+    api = Api()
+
     # PyWebView 창 열기
     webview.create_window(
         'PLC Simulator',
         'http://localhost:8000/',
         width=1400,
         height=800,
+        js_api=api,
     )
     webview.start()
 
